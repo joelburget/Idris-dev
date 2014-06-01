@@ -33,10 +33,13 @@ instance ToJSON SExp where
     toJSON (IntegerAtom i)  = object ["type" .= ("int"    :: String), "val" .= i]
     toJSON (SymbolAtom s)   = object ["type" .= ("symb"   :: String), "val" .= s]
 
+-- {"type":"list","val":[{"type":"list","val":[{"type":"symb","val":"interpret"},{"type":"string","val":"2+2"}]},{"type":"int","val":0}]}
+
 -- pre: prefix?
 -- s: expression
-convJSON :: SExpable a => String -> a -> String
-convJSON pre s = B8.unpack $ BL.toStrict $ encode $ SexpList [SymbolAtom pre, toSExp s]
+convJSON :: SExpable a => String -> a -> Integer -> String
+convJSON pre s id = B8.unpack $ BL.toStrict $ encode $ SexpList
+    [SymbolAtom pre, toSExp s, IntegerAtom id]
 
 parseMessage :: String -> Either Err (SExp, Integer)
 parseMessage x =

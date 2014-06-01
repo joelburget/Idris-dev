@@ -46,7 +46,7 @@ data Option = TTypeInTType
 -- | Source location. These are typically produced by the parser
 --   'Idris.Parser.getFC'
 data FC = FC {
-    -- ^ Filename
+    -- | Filename
     fc_fname :: String,
     -- | Line and column numbers for the start of the location span
     fc_start :: (Int, Int),

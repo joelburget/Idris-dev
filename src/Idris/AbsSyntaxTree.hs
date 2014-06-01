@@ -122,7 +122,7 @@ data LanguageExt = TypeProviders | ErrorReflection deriving (Show, Eq, Read, Ord
 data OutputMode = RawOutput
                 -- | The Integer is an identifier
                 | IdeSlave Integer
-                | Server deriving Show
+                | Server Integer deriving Show
 
 -- | How wide is the console?
 data ConsoleWidth = InfinitelyWide -- ^ Have pretty-printer assume that lines should not be broken

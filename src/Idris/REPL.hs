@@ -141,8 +141,7 @@ repl orig mods
 
 -- | Run the REPL server
 startRepl :: IState -> [FilePath] -> Idris ()
-startRepl orig fn_in = do tid <- runIO $ forkOS serverLoop
-                          return ()
+startRepl orig fn_in = runIO $ forkOS serverLoop
   where serverLoop :: IO ()
         -- TODO: option for port number
         serverLoop = withSocketsDo $
@@ -168,7 +167,7 @@ processNetCmd orig i h fn cmd
                   Success c -> runErrorT $ evalStateT (processNet fn c) i
          case res of
               Right x -> return x
-              Left err -> do hPutStrLn h (show err)
+              Left err -> do hPrint h err
                              return (i, fn)
   where
     processNet fn Reload = processNet fn (Load fn Nothing)
@@ -209,7 +208,7 @@ startDependent orig mods
        when (mods /= []) (isetPrompt (mkPrompt mods))
        case idris_outputmode i of
          IdeSlave _ -> ideslave orig mods
-         Server     -> server orig mods
+         Server   _ -> server orig mods
 
 server :: IState -> [FilePath] -> Idris ()
 server orig mods = do
@@ -218,7 +217,7 @@ server orig mods = do
         (sexp, id) <- case Server.parseMessage l of
             Left err -> ierror err
             Right (sexp, id) -> return (sexp, id)
-        modIState $ \i -> i { idris_outputmode = Server }
+        modIState $ \i -> i { idris_outputmode = Server id }
         idrisCatch (do
             let fn = case mods of
                     (f:_) -> f

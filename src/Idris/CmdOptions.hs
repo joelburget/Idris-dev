@@ -31,6 +31,7 @@ parseFlags = many $
   flag' NoBanner (long "nobanner" <> help "Suppress the banner")
   <|> flag' Quiet (short 'q' <> long "quiet" <> help "Quiet verbosity")
   <|> flag' Ideslave (long "ideslave")
+  <|> flag' IsServer (long "server")
   <|> (Client <$> strOption (long "client"))
   <|> (OLogging <$> option (long "log" <> metavar "LEVEL" <> help "Debugging log level"))
   <|> flag' NoBasePkgs (long "nobasepkgs")

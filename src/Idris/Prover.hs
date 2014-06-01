@@ -60,12 +60,12 @@ assumptionNames e
 prove :: Ctxt OptInfo -> Context -> Bool -> Name -> Type -> Idris ()
 prove opt ctxt lit n ty
     = do let ps = initElaborator n ctxt ty
-         ideslavePutSExp "start-proof-mode" n
+         dependentPutSExp "start-proof-mode" n
          (tm, prf) <- ploop n True ("-" ++ show n) [] (ES (ps, []) "" Nothing) Nothing
          iLOG $ "Adding " ++ show tm
          iputStrLn $ showProof lit n prf
          i <- getIState
-         ideslavePutSExp "end-proof-mode" n
+         dependentPutSExp "end-proof-mode" n
          let proofs = proof_list i
          putIState (i { proof_list = (n, prf) : proofs })
          let tree = simpleCase False True False CompileTime (fileFC "proof") [] [] [([], P Ref n ty, tm)]
@@ -168,7 +168,7 @@ receiveInput e =
        Just (REPLCompletions prefix) ->
          do (unused, compls) <- proverCompletion (assumptionNames e) (reverse prefix, "")
             let good = SexpList [SymbolAtom "ok", toSExp (map replacement compls, reverse unused)]
-            ideslavePutSExp "return" good
+            dependentPutSExp "return" good
             receiveInput e
        Just (Interpret cmd) -> return (Just cmd)
        Nothing -> return Nothing
@@ -281,7 +281,7 @@ ploop fn d prompt prf e h
                                 return (True, st, False, prf ++ [step]))
            (\err -> do iPrintError (pshow i err)
                        return (False, e, False, prf))
-         ideslavePutSExp "write-proof-state" (prf', length prf')
+         dependentPutSExp "write-proof-state" (prf', length prf')
          if done then do (tm, _) <- elabStep st get_term
                          return (tm, prf')
                  else ploop fn d prompt prf' st h'

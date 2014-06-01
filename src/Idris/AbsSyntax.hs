@@ -22,7 +22,6 @@ import System.IO
 
 import Control.Applicative ((<$>))
 import Control.Monad.State
-import Control.Monad.Error(throwError)
 
 import Data.List
 import Data.Char
@@ -539,7 +538,7 @@ isetPrompt :: String -> Idris ()
 isetPrompt p = do i <- getIState
                   case idris_outputmode i of
                     IdeSlave n -> runIO . putStrLn $ convSExp "set-prompt" p n
-                    Server -> runIO . putStrLn $ convJSON "set-prompt" p
+                    Server   n -> runIO . putStrLn $ convJSON "set-prompt" p n
 
 -- | Tell clients how much was parsed and loaded
 isetLoadedRegion :: Idris ()
@@ -667,7 +666,7 @@ outputTy = do i <- getIState
 setServer :: Bool -> Idris ()
 setServer True =
     modIState $ \i -> i {
-        idris_outputmode = Server,
+        idris_outputmode = Server 0,
         idris_colourRepl = False
         }
 setServer False = return ()
