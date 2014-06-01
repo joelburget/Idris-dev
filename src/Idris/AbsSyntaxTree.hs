@@ -27,7 +27,6 @@ import Data.List hiding (group)
 import Data.Char
 import qualified Data.Map as M
 import qualified Data.Text as T
-import qualified Data.Map as M
 import Data.Either
 import qualified Data.Set as S
 import Data.Word (Word)
@@ -120,7 +119,10 @@ ppOptionIst = ppOption . idris_options
 data LanguageExt = TypeProviders | ErrorReflection deriving (Show, Eq, Read, Ord)
 
 -- | The output mode in use
-data OutputMode = RawOutput | IdeSlave Integer deriving Show
+data OutputMode = RawOutput
+                -- | The Integer is an identifier
+                | IdeSlave Integer
+                | Server deriving Show
 
 -- | How wide is the console?
 data ConsoleWidth = InfinitelyWide -- ^ Have pretty-printer assume that lines should not be broken
@@ -346,6 +348,7 @@ data Opt = Filename String
          | NoBanner
          | ColourREPL Bool
          | Ideslave
+         | Server
          | ShowLibs
          | ShowLibdir
          | ShowIncs
@@ -1159,7 +1162,7 @@ consoleDecorate ist (AnnTextFmt fmt) = Idris.Colours.colourise (colour fmt)
         colour ItalicText    = IdrisColour Nothing True False False True
 
 -- | Pretty-print a high-level closed Idris term with no information about precedence/associativity
-prettyImp :: PPOption -- ^^ pretty printing options 
+prettyImp :: PPOption -- ^^ pretty printing options
           -> PTerm -- ^^ the term to pretty-print
           -> Doc OutputAnnotation
 prettyImp impl = pprintPTerm impl [] [] []
@@ -1169,7 +1172,7 @@ prettyIst ::  IState -> PTerm -> Doc OutputAnnotation
 prettyIst ist = pprintPTerm (ppOptionIst ist) [] [] (idris_infixes ist)
 
 -- | Pretty-print a high-level Idris term in some bindings context with infix info
-pprintPTerm :: PPOption -- ^^ pretty printing options 
+pprintPTerm :: PPOption -- ^^ pretty printing options
             -> [(Name, Bool)] -- ^^ the currently-bound names and whether they are implicit
             -> [Name] -- ^^ names to always show in pi, even if not used
             -> [FixDecl] -- ^^ Fixity declarations
@@ -1438,7 +1441,7 @@ prettyName showNS bnd n | Just imp <- lookup n bnd = annotate (AnnBoundName n im
         strName (NS n ns) | showNS    = (concatMap (++ ".") . map T.unpack . reverse) ns ++ strName n
                           | otherwise = strName n
         strName n | n == falseTy = "_|_"
-        strName (MN i s) = T.unpack s 
+        strName (MN i s) = T.unpack s
         strName other = show other
 
 

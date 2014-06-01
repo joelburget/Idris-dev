@@ -101,28 +101,34 @@ constTy (B64V _) = "Bits64x2"
 constTy _ = "Type"
 
 instance SExpable OutputAnnotation where
-  toSExp (AnnName n ty d t) = toSExp $ [(SymbolAtom "name", StringAtom (show n)),
-                                        (SymbolAtom "implicit", BoolAtom False)] ++
-                                       maybeProps [("decor", ty)] ++
-                                       maybeProps [("doc-overview", d), ("type", t)]
-  toSExp (AnnBoundName n imp)    = toSExp [(SymbolAtom "name", StringAtom (show n)),
-                                           (SymbolAtom "decor", SymbolAtom "bound"),
-                                           (SymbolAtom "implicit", BoolAtom imp)]
-  toSExp (AnnConst c)            = toSExp [(SymbolAtom "decor",
-                                            SymbolAtom (if constIsType c then "type" else "data")),
-                                           (SymbolAtom "type", StringAtom (constTy c)),
-                                           (SymbolAtom "doc-overview", StringAtom (constDocs c)),
-                                           (SymbolAtom "name", StringAtom (show c))]
-  toSExp (AnnData ty doc)        = toSExp [(SymbolAtom "decor", SymbolAtom "data"),
-                                           (SymbolAtom "type", StringAtom ty),
-                                           (SymbolAtom "doc-overview", StringAtom doc)]
-  toSExp (AnnType name doc)      = toSExp $ [(SymbolAtom "decor", SymbolAtom "type"),
-                                             (SymbolAtom "type", StringAtom "Type"),
-                                             (SymbolAtom "doc-overview", StringAtom doc)] ++
-                                             if not (null name) then [(SymbolAtom "name", StringAtom name)] else []
-  toSExp AnnKeyword              = toSExp [(SymbolAtom "decor", SymbolAtom "keyword")]
-  toSExp (AnnFC fc)      = toSExp [(SymbolAtom "source-loc", toSExp fc)]
-  toSExp (AnnTextFmt fmt) = toSExp [(SymbolAtom "text-formatting", SymbolAtom format)]
+  toSExp (AnnName n ty d t) = toSExp $
+    [(SymbolAtom "name", StringAtom (show n)),
+     (SymbolAtom "implicit", BoolAtom False)] ++
+    maybeProps [("decor", ty)] ++
+    maybeProps [("doc-overview", d), ("type", t)]
+  toSExp (AnnBoundName n imp) = toSExp
+    [(SymbolAtom "name", StringAtom (show n)),
+     (SymbolAtom "decor", SymbolAtom "bound"),
+     (SymbolAtom "implicit", BoolAtom imp)]
+  toSExp (AnnConst c) = toSExp
+    [(SymbolAtom "decor",
+        SymbolAtom (if constIsType c then "type" else "data")),
+     (SymbolAtom "type", StringAtom (constTy c)),
+     (SymbolAtom "doc-overview", StringAtom (constDocs c)),
+     (SymbolAtom "name", StringAtom (show c))]
+  toSExp (AnnData ty doc) = toSExp
+    [(SymbolAtom "decor", SymbolAtom "data"),
+     (SymbolAtom "type", StringAtom ty),
+     (SymbolAtom "doc-overview", StringAtom doc)]
+  toSExp (AnnType name doc) = toSExp $
+    [(SymbolAtom "decor", SymbolAtom "type"),
+     (SymbolAtom "type", StringAtom "Type"),
+     (SymbolAtom "doc-overview", StringAtom doc)] ++
+    [(SymbolAtom "name", StringAtom name) | not (null name)]
+  toSExp AnnKeyword       = toSExp [(SymbolAtom "decor", SymbolAtom "keyword")]
+  toSExp (AnnFC fc)       = toSExp [(SymbolAtom "source-loc", toSExp fc)]
+  toSExp (AnnTextFmt fmt) = toSExp
+    [(SymbolAtom "text-formatting", SymbolAtom format)]
       where format = case fmt of
                        BoldText      -> "bold"
                        ItalicText    -> "italic"
@@ -131,8 +137,12 @@ instance SExpable OutputAnnotation where
 instance SExpable FC where
   toSExp (FC f (sl, sc) (el, ec)) =
     toSExp ((SymbolAtom "filename", StringAtom f),
-            (SymbolAtom "start",  IntegerAtom (toInteger sl), IntegerAtom (toInteger sc)),
-            (SymbolAtom "end", IntegerAtom (toInteger el), IntegerAtom (toInteger ec)))
+            (SymbolAtom "start",
+             IntegerAtom (toInteger sl),
+             IntegerAtom (toInteger sc)),
+            (SymbolAtom "end",
+             IntegerAtom (toInteger el),
+             IntegerAtom (toInteger ec)))
 
 escape :: String -> String
 escape = concatMap escapeChar
@@ -223,9 +233,7 @@ sexpToCommand (SexpList [SymbolAtom "calls-who", StringAtom name])              
 sexpToCommand _                                                                         = Nothing
 
 parseMessage :: String -> Either Err (SExp, Integer)
-parseMessage x = case receiveString x of
-                   Right (SexpList [cmd, (IntegerAtom id)]) -> Right (cmd, id)
-                   Left err -> Left err
+parseMessage x = (\(SexpList [cmd, IntegerAtom id]) -> (cmd, id)) <$> x
 
 receiveString :: String -> Either Err SExp
 receiveString x =
@@ -239,10 +247,13 @@ receiveString x =
                       Success r -> Right r)
     _ -> Left . Msg $ "readHex failed"
 
+-- pre: prefix?
+-- s: expression
+-- n: slave identifier?
 convSExp :: SExpable a => String -> a -> Integer -> String
 convSExp pre s id =
-  let sex = SexpList [SymbolAtom pre, toSExp s, IntegerAtom id] in
-      let str = sExpToString sex in
+  let sexp = SexpList [SymbolAtom pre, toSExp s, IntegerAtom id] in
+      let str = sExpToString sexp in
           (getHexLength str) ++ str
 
 getHexLength :: String -> String

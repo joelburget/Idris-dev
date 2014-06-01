@@ -110,7 +110,7 @@ repl orig mods
                           return ()
             Just input -> -- H.catch
                 do ms <- H.catch (lift $ processInput input orig mods)
-                                 (ctrlC (return (Just mods))) 
+                                 (ctrlC (return (Just mods)))
                    case ms of
                         Just mods -> repl orig mods
                         Nothing -> return ()
@@ -121,7 +121,7 @@ repl orig mods
                           act -- repl orig mods
 
          showMVs c thm [] = ""
-         showMVs c thm ms = "Metavariables: " ++ 
+         showMVs c thm ms = "Metavariables: " ++
                                  show' 4 c thm (map fst ms) ++ "\n"
 
          show' 0 c thm ms = let l = length ms in
@@ -129,7 +129,7 @@ repl orig mods
                              ++ " other"
                              ++ if l == 1 then ")" else "s)"
          show' n c thm [m] = showM c thm m
-         show' n c thm (m : ms) = showM c thm m ++ ", " ++ 
+         show' n c thm (m : ms) = showM c thm m ++ ", " ++
                                   show' (n - 1) c thm ms
 
          showM c thm n = if c then colouriseFun thm (show n)
@@ -208,6 +208,7 @@ ideslaveStart orig mods
        ideslave orig mods
 
 
+-- | Loop waiting for commands to execute
 ideslave :: IState -> [FilePath] -> Idris ()
 ideslave orig mods
   = do idrisCatch
@@ -710,7 +711,7 @@ process h fn (DebugInfo n)
                                    iputStrLn (show cg')
 process h fn (Search t) = searchByType h (searchPred defaultScoreFunction) scoreLimit t where
   scoreLimit = 100
-process h fn (CaseSplitAt updatefile l n) 
+process h fn (CaseSplitAt updatefile l n)
     = caseSplitAt h fn updatefile l n
 process h fn (AddClauseFrom updatefile l n)
     = addClauseFrom h fn updatefile l n
@@ -1027,10 +1028,10 @@ loadInputs h inputs toline -- furthest line to read in input source files
                    let ifiles = getModuleFiles modTree
                    iLOG ("MODULE TREE : " ++ show modTree)
                    iLOG ("RELOAD: " ++ show ifiles)
-                   when (not (all ibc ifiles) || loadCode) $ 
+                   when (not (all ibc ifiles) || loadCode) $
                         tryLoad False (filter (not . ibc) ifiles)
                    -- return the files that need rechecking
-                   return ifiles) 
+                   return ifiles)
                       ninputs
            inew <- getIState
            let tidata = idris_tyinfodata inew
