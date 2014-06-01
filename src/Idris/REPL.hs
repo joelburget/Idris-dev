@@ -23,6 +23,7 @@ import Idris.Docs hiding (Doc)
 import Idris.Help
 import Idris.Completion
 import qualified Idris.IdeSlave as IdeSlave
+import qualified Idris.Server as Server
 import Idris.Chaser
 import Idris.Imports
 import Idris.Colours hiding (colourise)
@@ -87,6 +88,9 @@ import Control.DeepSeq
 
 import Debug.Trace
 
+replPort :: PortID
+replPort = PortNumber 4294
+
 -- | Run the REPL
 repl :: IState -- ^ The initial state
      -> [FilePath] -- ^ The loaded modules
@@ -136,13 +140,13 @@ repl orig mods
                               else show n
 
 -- | Run the REPL server
-startServer :: IState -> [FilePath] -> Idris ()
-startServer orig fn_in = do tid <- runIO $ forkOS serverLoop
-                            return ()
+startRepl :: IState -> [FilePath] -> Idris ()
+startRepl orig fn_in = do tid <- runIO $ forkOS serverLoop
+                          return ()
   where serverLoop :: IO ()
         -- TODO: option for port number
         serverLoop = withSocketsDo $
-                              do sock <- listenOnLocalhost $ PortNumber 4294
+                              do sock <- listenOnLocalhost replPort
                                  loop fn orig sock
 
         fn = case fn_in of
@@ -188,7 +192,7 @@ processNetCmd orig i h fn cmd
 -- | Run a command on the server on localhost
 runClient :: String -> IO ()
 runClient str = withSocketsDo $ do
-                  h <- connectTo "localhost" (PortNumber 4294)
+                  h <- connectTo "localhost" replPort
                   hPutStrLn h str
                   resp <- hGetResp "" h
                   putStr resp
@@ -199,25 +203,44 @@ runClient str = withSocketsDo $ do
                                              hGetResp (acc ++ l ++ "\n") h
 
 -- | Run the IdeSlave
-ideslaveStart :: IState -> [FilePath] -> Idris ()
-ideslaveStart orig mods
+startDependent :: IState -> [FilePath] -> Idris ()
+startDependent orig mods
   = do i <- getIState
+       when (mods /= []) (isetPrompt (mkPrompt mods))
        case idris_outputmode i of
-         IdeSlave n ->
-           when (mods /= []) (do isetPrompt (mkPrompt mods))
-       ideslave orig mods
+         IdeSlave _ -> ideslave orig mods
+         Server     -> server orig mods
 
+server :: IState -> [FilePath] -> Idris ()
+server orig mods = do
+    idrisCatch (do
+        l <- runIO getLine
+        (sexp, id) <- case Server.parseMessage l of
+            Left err -> ierror err
+            Right (sexp, id) -> return (sexp, id)
+        modIState $ \i -> i { idris_outputmode = Server }
+        idrisCatch (do
+            let fn = case mods of
+                    (f:_) -> f
+                    _ -> ""
+            case IdeSlave.sexpToCommand sexp of
+                -- Just cmd -> runServerCommand orig fn mods cmd
+                Just cmd -> runIdeSlaveCommand undefined orig fn mods cmd
+                -- TODO(joel) - better error message
+                Nothing  -> iPrintError "did not understand")
+            (iPrintError . show))
+        (iPrintError . show)
+    server orig mods
 
 -- | Loop waiting for commands to execute
 ideslave :: IState -> [FilePath] -> Idris ()
 ideslave orig mods
   = do idrisCatch
-         (do l <- runIO $ getLine
+         (do l <- runIO getLine
              (sexp, id) <- case IdeSlave.parseMessage l of
                              Left err -> ierror err
                              Right (sexp, id) -> return (sexp, id)
-             i <- getIState
-             putIState $ i { idris_outputmode = (IdeSlave id) }
+             modIState $ \i -> i { idris_outputmode = (IdeSlave id) }
              idrisCatch -- to report correct id back!
                (do let fn = case mods of
                               (f:_) -> f
@@ -225,9 +248,29 @@ ideslave orig mods
                    case IdeSlave.sexpToCommand sexp of
                      Just cmd -> runIdeSlaveCommand id orig fn mods cmd
                      Nothing  -> iPrintError "did not understand" )
-               (\e -> do iPrintError $ show e))
-         (\e -> do iPrintError $ show e)
+               (iPrintError . show))
+         (iPrintError . show)
        ideslave orig mods
+
+runServerCommand :: IState
+                 -> FilePath
+                 -> [FilePath]
+                 -> Server.ServerCommand
+                 -> Idris ()
+runServerCommand orig fn mods (IdeSlave.Interpret cmd) = do
+    c <- colourise
+    i <- getIState
+    case parseCmd undefined "(server)" cmd of
+        Failure err -> iPrintError $ show (fixColour c err)
+        Success (Prove n') -> do
+            iPrintResult ""
+            idrisCatch
+              (process stdout fn (Prove n'))
+              (\e -> getIState >>= ihRenderError stdout . flip pprintErr e)
+            isetPrompt (mkPrompt mods)
+        Success cmd -> idrisCatch
+            (ideslaveProcess fn cmd)
+            (\e -> getIState >>= ihRenderError stdout . flip pprintErr e)
 
 -- | Run IDESlave commands
 runIdeSlaveCommand :: Integer -- ^^ The continuation ID for the client
@@ -241,11 +284,12 @@ runIdeSlaveCommand id orig fn mods (IdeSlave.Interpret cmd) =
      i <- getIState
      case parseCmd i "(input)" cmd of
        Failure err -> iPrintError $ show (fixColour c err)
-       Success (Prove n') -> do iPrintResult ""
-                                idrisCatch
-                                  (process stdout fn (Prove n'))
-                                  (\e -> getIState >>= ihRenderError stdout . flip pprintErr e)
-                                isetPrompt (mkPrompt mods)
+       Success (Prove n') -> do
+           iPrintResult ""
+           idrisCatch
+             (process stdout fn (Prove n'))
+             (\e -> getIState >>= ihRenderError stdout . flip pprintErr e)
+           isetPrompt (mkPrompt mods)
        Success cmd -> idrisCatch
                         (ideslaveProcess fn cmd)
                         (\e -> getIState >>= ihRenderError stdout . flip pprintErr e)
@@ -1124,6 +1168,7 @@ idrisMain opts =
        let quiet = Quiet `elem` opts
        let nobanner = NoBanner `elem` opts
        let idesl = Ideslave `elem` opts
+       let server = IsServer `elem` opts
        let runrepl = not (NoREPL `elem` opts)
        let verbose = runrepl || Verbose `elem` opts
        let output = opt getOutput opts
@@ -1161,6 +1206,7 @@ idrisMain opts =
        setREPL runrepl
        setQuiet (quiet || isJust script || not (null immediate))
        setIdeSlave idesl
+       setServer server
        setVerbose verbose
        setCmdLine opts
        setOutputTy outty
@@ -1191,13 +1237,14 @@ idrisMain opts =
        when (not (NoPrelude `elem` opts)) $ do x <- loadModule stdout "Prelude"
                                                return ()
 
-       when (runrepl && not idesl) initScript
+       when (runrepl && not idesl && not server) initScript
 
        nobanner <- getNoBanner
 
        when (runrepl &&
              not quiet &&
              not idesl &&
+             not server &&
              not (isJust script) &&
              not nobanner &&
              null immediate) $
@@ -1240,11 +1287,11 @@ idrisMain opts =
 
        historyFile <- fmap (</> "repl" </> "history") getIdrisUserDataDir
 
-       when (runrepl && not idesl) $ do
+       when (runrepl && not idesl && not server) $ do
 --          clearOrigPats
-         startServer orig inputs
+         startRepl orig inputs
          runInputT (replSettings (Just historyFile)) $ repl orig inputs
-       when (idesl) $ ideslaveStart orig inputs
+       when (idesl || server) $ startDependent orig inputs
        ok <- noErrors
        when (not ok) $ runIO (exitWith (ExitFailure 1))
   where

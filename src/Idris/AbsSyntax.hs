@@ -11,6 +11,7 @@ import Idris.AbsSyntaxTree
 import Idris.Colours
 import Idris.Docstrings
 import Idris.IdeSlave hiding (Opt(..))
+import Idris.Server
 import IRTS.CodegenCommon
 import Util.DynamicLinker
 
@@ -19,6 +20,7 @@ import Paths_idris
 import System.Console.Haskeline
 import System.IO
 
+import Control.Applicative ((<$>))
 import Control.Monad.State
 import Control.Monad.Error(throwError)
 
@@ -36,7 +38,7 @@ import Debug.Trace
 import Control.Monad.Error (throwError, catchError)
 import System.IO.Error(isUserError, ioeGetErrorString, tryIOError)
 
-import Util.Pretty
+import Util.Pretty hiding ((<$>))
 import Util.ScreenSize
 import Util.System
 
@@ -114,8 +116,8 @@ totcheck :: (FC, Name) -> Idris ()
 totcheck n = do i <- getIState; putIState $ i { idris_totcheck = idris_totcheck i ++ [n] }
 
 defer_totcheck :: (FC, Name) -> Idris ()
-defer_totcheck n 
-   = do i <- getIState; 
+defer_totcheck n
+   = do i <- getIState;
         putIState $ i { idris_defertotcheck = nub (idris_defertotcheck i ++ [n]) }
 
 clear_totcheck :: Idris ()
@@ -164,7 +166,7 @@ addToCG n cg
         putIState $ i { idris_callgraph = addDef n cg (idris_callgraph i) }
 
 addTyInferred :: Name -> Idris ()
-addTyInferred n 
+addTyInferred n
    = do i <- getIState
         putIState $ i { idris_tyinfodata =
                         addDef n TIPartial (idris_tyinfodata i) }
@@ -178,7 +180,7 @@ addTyInfConstraints fc ts = do logLvl 2 $ "TI missing: " ++ show ts
           findMVApps x y
              = do let (fx, argsx) = unApply x
                   let (fy, argsy) = unApply y
-                  if (not (fx == fy)) 
+                  if (not (fx == fy))
                      then do
                        tryAddMV fx y
                        tryAddMV fy x
@@ -192,17 +194,17 @@ addTyInfConstraints fc ts = do logLvl 2 $ "TI missing: " ++ show ts
           tryAddMV _ _ = return ()
 
           addConstraintRule :: Name -> Term -> Idris ()
-          addConstraintRule n t 
+          addConstraintRule n t
              = do ist <- get
                   logLvl 1 $ "TI constraint: " ++ show (n, t)
                   case lookupCtxt n (idris_tyinfodata ist) of
-                     [TISolution ts] -> 
+                     [TISolution ts] ->
                          do mapM_ (checkConsistent t) ts
-                            let ti' = addDef n (TISolution (t : ts)) 
+                            let ti' = addDef n (TISolution (t : ts))
                                                (idris_tyinfodata ist)
                             put $ ist { idris_tyinfodata = ti' }
-                     _ ->  
-                         do let ti' = addDef n (TISolution [t]) 
+                     _ ->
+                         do let ti' = addDef n (TISolution [t])
                                                (idris_tyinfodata ist)
                             put $ ist { idris_tyinfodata = ti' }
 
@@ -214,14 +216,14 @@ addTyInfConstraints fc ts = do logLvl 2 $ "TI missing: " ++ show ts
               do let (fx, _) = unApply x
                  let (fy, _) = unApply y
                  case (fx, fy) of
-                      (P (TCon _ _) n _, P (TCon _ _) n' _) -> errWhen (n/=n) 
+                      (P (TCon _ _) n _, P (TCon _ _) n' _) -> errWhen (n/=n)
                       (P (TCon _ _) n _, Constant _) -> errWhen True
                       (Constant _, P (TCon _ _) n' _) -> errWhen True
-                      (P (DCon _ _) n _, P (DCon _ _) n' _) -> errWhen (n/=n) 
+                      (P (DCon _ _) n _, P (DCon _ _) n' _) -> errWhen (n/=n)
                       _ -> return ()
 
-              where errWhen True 
-                       = throwError (At fc 
+              where errWhen True
+                       = throwError (At fc
                             (CantUnify False x y (Msg "") [] 0))
                     errWhen False = return ()
 
@@ -314,7 +316,7 @@ addInstance int n i
         insI i (n : ns) | chaser n = i : n : ns
                         | otherwise = n : insI i ns
 
-        chaser (UN nm) 
+        chaser (UN nm)
              | ('@':'@':_) <- str nm = True
         chaser (NS n _) = chaser n
         chaser _ = False
@@ -362,7 +364,7 @@ getHdrs :: Codegen -> Idris [String]
 getHdrs tgt = do i <- getIState; return (forCodegen tgt $ idris_hdrs i)
 
 getImported ::  Idris [FilePath]
-getImported = do i <- getIState; return (idris_imported i)
+getImported = idris_imported <$> getIState
 
 setErrSpan :: FC -> Idris ()
 setErrSpan x = do i <- getIState;
@@ -371,22 +373,22 @@ setErrSpan x = do i <- getIState;
                       Just _ -> return ()
 
 clearErr :: Idris ()
-clearErr = do i <- getIState
-              putIState $ i { errSpan = Nothing }
+clearErr = modIState $ \i -> i { errSpan = Nothing }
 
 getSO :: Idris (Maybe String)
-getSO = do i <- getIState
-           return (compiled_so i)
+getSO = compiled_so <$> getIState
 
 setSO :: Maybe String -> Idris ()
-setSO s = do i <- getIState
-             putIState $ (i { compiled_so = s })
+setSO s = modIState $ \i -> (i { compiled_so = s })
 
 getIState :: Idris IState
 getIState = get
 
 putIState :: IState -> Idris ()
 putIState = put
+
+modIState :: (IState -> IState) -> Idris ()
+modIState = modify
 
 withContext :: (IState -> Ctxt a) -> Name -> b -> (a -> Idris b) -> Idris b
 withContext ctx name dflt action = do
@@ -435,9 +437,9 @@ clearOrigPats = do i <- get
 -- the .ibc, which is all we need after all the analysis is done)
 clearPTypes :: Idris ()
 clearPTypes = do i <- get
-                 let ctxt = tt_ctxt i 
+                 let ctxt = tt_ctxt i
                  put (i { tt_ctxt = mapDefCtxt pErase ctxt })
-   where pErase (CaseOp c t tys orig tot cds) 
+   where pErase (CaseOp c t tys orig tot cds)
             = CaseOp c t tys orig [] (pErase' cds)
          pErase x = x
          pErase' (CaseDefs _ (cs, c) _ rs)
@@ -537,6 +539,7 @@ isetPrompt :: String -> Idris ()
 isetPrompt p = do i <- getIState
                   case idris_outputmode i of
                     IdeSlave n -> runIO . putStrLn $ convSExp "set-prompt" p n
+                    Server -> runIO . putStrLn $ convJSON "set-prompt" p
 
 -- | Tell clients how much was parsed and loaded
 isetLoadedRegion :: Idris ()
@@ -661,9 +664,17 @@ outputTy :: Idris OutputType
 outputTy = do i <- getIState
               return $ opt_outputTy $ idris_options i
 
+setServer :: Bool -> Idris ()
+setServer True =
+    modIState $ \i -> i {
+        idris_outputmode = Server,
+        idris_colourRepl = False
+        }
+setServer False = return ()
+
 setIdeSlave :: Bool -> Idris ()
-setIdeSlave True  = do i <- getIState
-                       putIState $ i { idris_outputmode = (IdeSlave 0), idris_colourRepl = False }
+setIdeSlave True  = modIState $ \i -> i { idris_outputmode = IdeSlave 0,
+                                          idris_colourRepl = False }
 setIdeSlave False = return ()
 
 setTargetTriple :: String -> Idris ()
@@ -1057,13 +1068,13 @@ addStatics n tm ptm =
     initStatics (Bind n (Pi ty) sc) (PPi p _ _ s)
             = let (static, dynamic) = initStatics (instantiate (P Bound n ty) sc) s in
                   if pstatic p == Static then ((n, ty) : static, dynamic)
-                    else if (not (searchArg p)) 
+                    else if (not (searchArg p))
                             then (static, (n, ty) : dynamic)
                             else (static, dynamic)
     initStatics t pt = ([], [])
 
-    freeArgNames (Bind n (Pi ty) sc) 
-          = nub $ freeArgNames ty 
+    freeArgNames (Bind n (Pi ty) sc)
+          = nub $ freeArgNames ty
     freeArgNames tm = let (_, args) = unApply tm in
                           concatMap freeNames args
 
@@ -1141,11 +1152,11 @@ implicit' info syn ignore n ptm
   where
     --  Detect unknown names in default arguments and throw error if found.
     defaultArgCheck :: [Name] -> [PArg] -> Idris ()
-    defaultArgCheck knowns params = foldM_ notFoundInDefault knowns params 
+    defaultArgCheck knowns params = foldM_ notFoundInDefault knowns params
 
     notFoundInDefault :: [Name] -> PArg -> Idris [Name]
     notFoundInDefault kns (PTacImplicit _ _ n script _)
-      = do  i <- getIState 
+      = do  i <- getIState
             case notFound kns (namesIn [] i script) of
               Nothing     -> return (n:kns)
               Just name   -> throwError (NoSuchVariable name)
@@ -1278,7 +1289,7 @@ addImpl = addImpl' False [] []
 -- and *not* inside a PHidden
 
 addImpl' :: Bool -> [Name] -> [Name] -> IState -> PTerm -> PTerm
-addImpl' inpat env infns ist ptm 
+addImpl' inpat env infns ist ptm
          = mkUniqueNames env (ai (zip env (repeat Nothing)) [] ptm)
   where
     ai env ds (PRef fc f)
@@ -1286,20 +1297,20 @@ addImpl' inpat env infns ist ptm
         | not (f `elem` map fst env) = handleErr $ aiFn inpat inpat ist fc f ds []
     ai env ds (PHidden (PRef fc f))
         | not (f `elem` map fst env) = handleErr $ aiFn inpat False ist fc f ds []
-    ai env ds (PEq fc l r)   
+    ai env ds (PEq fc l r)
       = let l' = ai env ds l
             r' = ai env ds r in
             PEq fc l' r'
-    ai env ds (PRewrite fc l r g)   
+    ai env ds (PRewrite fc l r g)
        = let l' = ai env ds l
              r' = ai env ds r
              g' = fmap (ai env ds) g in
          PRewrite fc l' r' g'
-    ai env ds (PTyped l r) 
+    ai env ds (PTyped l r)
       = let l' = ai env ds l
             r' = ai env ds r in
             PTyped l' r'
-    ai env ds (PPair fc p l r) 
+    ai env ds (PPair fc p l r)
       = let l' = ai env ds l
             r' = ai env ds r in
             PPair fc p l' r'
@@ -1308,7 +1319,7 @@ addImpl' inpat env infns ist ptm
                t' = ai env ds t
                r' = ai env ds r in
            PDPair fc p l' t' r'
-    ai env ds (PAlternative a as) 
+    ai env ds (PAlternative a as)
            = let as' = map (ai env ds) as in
                  PAlternative a as'
     ai env _ (PDisamb ds' as) = ai env ds' as
@@ -1324,17 +1335,17 @@ addImpl' inpat env infns ist ptm
              let as' = map (fmap (ai env ds)) as
                  arity = getPArity ty in
               mkPApp fc arity ftm as'
-    ai env ds (PApp fc f as) 
+    ai env ds (PApp fc f as)
       = let f' = ai env ds f
             as' = map (fmap (ai env ds)) as in
          mkPApp fc 1 f' as'
-    ai env ds (PCase fc c os) 
+    ai env ds (PCase fc c os)
       = let c' = ai env ds c in
         -- leave os alone, because they get lifted into a new pattern match
         -- definition which is passed through addImpl again with more scope
         -- information
             PCase fc c' os
-    ai env ds (PLam n ty sc) 
+    ai env ds (PLam n ty sc)
       = let ty' = ai env ds ty
             sc' = ai ((n, Just ty):env) ds sc in
             PLam n ty' sc'
@@ -1343,11 +1354,11 @@ addImpl' inpat env infns ist ptm
             val' = ai env ds val
             sc' = ai ((n, Just ty):env) ds sc in
             PLet n ty' val' sc'
-    ai env ds (PPi p n ty sc) 
+    ai env ds (PPi p n ty sc)
       = let ty' = ai env ds ty
             sc' = ai ((n, Just ty):env) ds sc in
             PPi p n ty' sc'
-    ai env ds (PGoal fc r n sc) 
+    ai env ds (PGoal fc r n sc)
       = let r' = ai env ds r
             sc' = ai ((n, Nothing):env) ds sc in
             PGoal fc r' n sc'
@@ -1396,7 +1407,7 @@ aiFn inpat expat ist fc f ds as
           let nh = filter (\(n, _) -> notHidden n) ns
           let ns' = case trimAlts ds nh of
                          [] -> nh
-                         x -> x 
+                         x -> x
           case ns' of
             [(f',ns)] -> Right $ mkPApp fc (length ns) (PRef fc f') (insertImpl ns as)
             [] -> if f `elem` (map fst (idris_metavars ist))
@@ -1408,7 +1419,7 @@ aiFn inpat expat ist fc f ds as
                                                   (insertImpl ns as)) alts
   where
     trimAlts [] alts = alts
-    trimAlts ns alts 
+    trimAlts ns alts
         = filter (\(x, _) -> any (\d -> d `isPrefixOf` nspace x) ns) alts
 
     nspace (NS _ s) = s
@@ -1489,7 +1500,7 @@ stripLinear i tm = evalState (sl tm) [] where
                                      return (PPatvar fc f)
     sl t@(PAlternative _ (a : as)) = do sl a
                                         return t
-    sl (PApp fc fn args) = do -- Just the args, fn isn't matchable as a var 
+    sl (PApp fc fn args) = do -- Just the args, fn isn't matchable as a var
                               args' <- mapM slA args
                               return $ PApp fc fn args'
        where slA (PImp p m l n t) = do t' <- sl t
@@ -1512,11 +1523,11 @@ stripUnmatchable :: IState -> PTerm -> PTerm
 stripUnmatchable i (PApp fc fn args) = PApp fc fn (fmap (fmap su) args) where
     su :: PTerm -> PTerm
     su (PRef fc f)
-       | (Bind n (Pi t) sc :_) <- lookupTy f (tt_ctxt i) 
+       | (Bind n (Pi t) sc :_) <- lookupTy f (tt_ctxt i)
           = Placeholder
-    su (PApp fc fn args) 
+    su (PApp fc fn args)
        = PApp fc fn (fmap (fmap su) args)
-    su (PAlternative b alts) 
+    su (PAlternative b alts)
        = let alts' = filter (/= Placeholder) (map su alts) in
              if null alts' then Placeholder
                            else PAlternative b alts'
@@ -1607,7 +1618,7 @@ matchClause' names i x y = checkRpts $ match (fullApp x) (fullApp y) where
     match (PApp _ x []) (PRef f n) = match x (PRef f n)
     match (PRef _ n) tm@(PRef _ n')
         | n == n' && not names &&
-          (not (isConName n (tt_ctxt i) || isFnName n (tt_ctxt i)) 
+          (not (isConName n (tt_ctxt i) || isFnName n (tt_ctxt i))
                 || tm == Placeholder)
             = return [(n, tm)]
         -- if one namespace is missing, drop the other

@@ -43,11 +43,16 @@ data Option = TTypeInTType
             | CheckConv
   deriving Eq
 
--- | Source location. These are typically produced by the parser 'Idris.Parser.getFC'
-data FC = FC { fc_fname :: String, -- ^ Filename
-               fc_start :: (Int, Int), -- ^ Line and column numbers for the start of the location span
-               fc_end :: (Int, Int) -- ^ Line and column numbers for the end of the location span
-             }
+-- | Source location. These are typically produced by the parser
+--   'Idris.Parser.getFC'
+data FC = FC {
+    -- ^ Filename
+    fc_fname :: String,
+    -- | Line and column numbers for the start of the location span
+    fc_start :: (Int, Int),
+    -- | Line and column numbers for the end of the location span
+    fc_end :: (Int, Int)
+    }
 
 -- | Ignore source location equality (so deriving classes do not compare FCs)
 instance Eq FC where
@@ -78,9 +83,13 @@ instance Sized FC where
 
 instance Show FC where
     show (FC f s e) = f ++ ":" ++ showLC s e
-      where showLC (sl, sc) (el, ec) | sl == el && sc == ec = show sl ++ ":" ++ show sc
-                                     | sl == el             = show sl ++ ":" ++ show sc ++ "-" ++ show ec
-                                     | otherwise            = show sl ++ ":" ++ show sc ++ "-" ++ show el ++ ":" ++ show ec
+      where showLC (sl, sc) (el, ec)
+                | sl == el && sc == ec
+                = show sl ++ ":" ++ show sc
+                | sl == el
+                = show sl ++ ":" ++ show sc ++ "-" ++ show ec
+                | otherwise
+                = show sl ++ ":" ++ show sc ++ "-" ++ show el ++ ":" ++ show ec
 
 -- | Output annotation for pretty-printed name - decides colour
 data NameOutput = TypeOutput | FunOutput | DataOutput | MetavarOutput
@@ -113,7 +122,7 @@ data ErrorReportPart = TextPart String
 
 -- | Idris errors. Used as exceptions in the compiler, but reported to users
 -- if they reach the top level.
-data Err' t 
+data Err' t
           = Msg String
           | InternalMsg String
           | CantUnify Bool t t (Err' t) [(Name, t)] Int
@@ -762,7 +771,7 @@ instance TermSize (TT Name) where
        | otherwise = 1
     termsize n (V _) = 1
     -- for `Bind` terms, we can erroneously declare a term
-    -- "recursive => really big" if the name of the bound 
+    -- "recursive => really big" if the name of the bound
     -- variable is the same as the name we're using
     -- So generate a different name in that case.
     termsize n (Bind n' (Let t v) sc)

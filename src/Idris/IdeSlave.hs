@@ -233,7 +233,8 @@ sexpToCommand (SexpList [SymbolAtom "calls-who", StringAtom name])              
 sexpToCommand _                                                                         = Nothing
 
 parseMessage :: String -> Either Err (SExp, Integer)
-parseMessage x = (\(SexpList [cmd, IntegerAtom id]) -> (cmd, id)) <$> x
+parseMessage x =
+  (\(SexpList [cmd, IntegerAtom id]) -> (cmd, id)) <$> receiveString x
 
 receiveString :: String -> Either Err SExp
 receiveString x =
