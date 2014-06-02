@@ -50,3 +50,81 @@ receiveString = left Msg . eitherDecode . BL.fromStrict . B8.pack
 
 -- temporary, maybe
 type ServerCommand = IdeSlaveCommand
+
+
+
+
+{-
+instance FromJSON Command where
+    parseJSON (Object obj) = case H.lookup "cmd" obj of
+        Just "Quit" -> pure Quit
+        Just "Help" -> pure Help
+        Just "Eval" -> Eval <$> obj .: "term"
+        Just "DocStr" -> case parseConst orig name of
+            Success c -> Right c
+            Failure _ -> case splitName name of
+               Left err -> fail err
+               Right n -> Left n
+        Just cmd -> fail $ cmd ++ " not yet supported"
+        Nothing -> fail "this is nonsense"
+
+instance ToJSON Command where
+    toJSON Quit = object ["cmd" .= "Quit"]
+    toJSON Help = object ["cmd" .= "Help"]
+    toJSON (Eval term) = object ["cmd" .= "Eval", "term" .= term]
+
+-- | REPL commands
+data Command = Quit
+             | Help
+             | Eval PTerm
+             | Check PTerm
+             | DocStr (Either Name Const)
+             | TotCheck Name
+             | Reload
+             | Load FilePath (Maybe Int) -- up to maximum line number
+             | ChangeDirectory FilePath
+             | ModImport String
+             | Edit
+             | Compile Codegen String
+             | Execute
+             | ExecVal PTerm
+             | Metavars
+             | Prove Name
+             | AddProof (Maybe Name)
+             | RmProof Name
+             | ShowProof Name
+             | Proofs
+             | Universes
+             | LogLvl Int
+             | Spec PTerm
+             | HNF PTerm
+             | TestInline PTerm
+             | Defn Name
+             | Missing Name
+             | DynamicLink FilePath
+             | ListDynamic
+             | Pattelab PTerm
+             | DebugInfo Name
+             | Search PTerm
+             | CaseSplitAt Bool Int Name
+             | AddClauseFrom Bool Int Name
+             | AddProofClauseFrom Bool Int Name
+             | AddMissing Bool Int Name
+             | MakeWith Bool Int Name
+             | MakeLemma Bool Int Name
+             | DoProofSearch Bool Bool Int Name [Name]
+               -- ^ the first bool is whether to update,
+               -- the second is whether to search recursively (i.e. for the arguments)
+             | SetOpt Opt
+             | UnsetOpt Opt
+             | NOP
+             | SetColour ColourType IdrisColour
+             | ColourOn
+             | ColourOff
+             | ListErrorHandlers
+             | SetConsoleWidth ConsoleWidth
+             | Apropos String
+             | WhoCalls Name
+             | CallsWho Name
+             | MakeDoc String                      -- IdrisDoc
+-}

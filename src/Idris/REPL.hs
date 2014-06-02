@@ -34,6 +34,7 @@ import Idris.Output
 import Idris.Interactive
 import Idris.WhoCalls
 import Idris.TypeSearch (searchByType, searchPred, defaultScoreFunction)
+import Idris.Util
 
 import Paths_idris
 import Version_idris (gitHash)
@@ -50,6 +51,8 @@ import Idris.Core.Constraints
 import IRTS.Compiler
 import IRTS.CodegenCommon
 
+import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Lazy as BL
 import Data.List.Split (splitOn)
 import qualified Data.Text as T
 
@@ -64,6 +67,22 @@ import LLVM.General.Target
 #else
 import Util.LLVMStubs
 #endif
+import Control.Arrow (right)
+import Control.Concurrent
+import Control.Concurrent.MVar
+import Control.DeepSeq
+import Control.Monad
+import Control.Monad.Trans.Error (ErrorT(..))
+import Control.Monad.Trans.State.Strict ( StateT, execStateT, evalStateT, get, put )
+import Control.Monad.Trans ( lift )
+import Data.Aeson (eitherDecode)
+import Data.Maybe
+import Data.List
+import Data.Char
+import Data.Version
+import Data.Word (Word)
+import Data.Either (partitionEithers)
+import Network
 import System.Console.Haskeline as H
 import System.FilePath
 import System.Exit
@@ -71,25 +90,14 @@ import System.Environment
 import System.Process
 import System.Directory
 import System.IO
-import Control.Monad
-import Control.Monad.Trans.Error (ErrorT(..))
-import Control.Monad.Trans.State.Strict ( StateT, execStateT, evalStateT, get, put )
-import Control.Monad.Trans ( lift )
-import Control.Concurrent.MVar
-import Network
-import Control.Concurrent
-import Data.Maybe
-import Data.List
-import Data.Char
-import Data.Version
-import Data.Word (Word)
-import Data.Either (partitionEithers)
-import Control.DeepSeq
 
 import Debug.Trace
 
-replPort :: PortID
-replPort = PortNumber 4294
+clientPort :: PortID
+clientPort = PortNumber 4294
+
+jsonPort :: PortID
+jsonPort = PortNumber 4295
 
 -- | Run the REPL
 repl :: IState -- ^ The initial state
@@ -138,26 +146,57 @@ repl orig mods
 
          showM c thm n = if c then colouriseFun thm (show n)
                               else show n
+type ConnectionHandler = IState
+                      -> IState
+                      -> Handle
+                      -> FilePath
+                      -> String
+                      -> IO (IState, FilePath)
+
+startServer :: PortID -> ConnectionHandler -> IState -> [FilePath] -> Idris ()
+startServer port handler orig files = void $ runIO $ forkOS serverLoop
+  where serverLoop :: IO ()
+        serverLoop = withSocketsDo $
+            listenOnLocalhost port >>= loop fn orig
+
+        -- TODO(joel) why do we take in these files then only possibly use
+        -- one?
+        fn = safeHead "" files
+
+        loop fn ist sock = do
+            (h, _, _) <- accept sock
+            cmd <- hGetLine h
+            (ist', fn') <- handler orig ist h fn cmd
+            hClose h
+            loop fn' ist' sock
 
 -- | Run the REPL server
-startRepl :: IState -> [FilePath] -> Idris ()
-startRepl orig fn_in = runIO $ forkOS serverLoop
-  where serverLoop :: IO ()
-        -- TODO: option for port number
-        serverLoop = withSocketsDo $
-                              do sock <- listenOnLocalhost replPort
-                                 loop fn orig sock
+startClientServer :: IState -> [FilePath] -> Idris ()
+startClientServer = startServer clientPort processNetCmd
 
-        fn = case fn_in of
-                  (f:_) -> f
-                  _ -> ""
+startJsonServer :: IState -> [FilePath] -> Idris ()
+startJsonServer = startServer jsonPort processJsonCmd
 
-        loop fn ist sock
-            = do (h,_,_) <- accept sock
-                 cmd <- hGetLine h
-                 (ist', fn) <- processNetCmd orig ist h fn cmd
-                 hClose h
-                 loop fn ist' sock
+processJsonCmd :: IState -- ^ original state?
+               -> IState -- ^ current state?
+               -> Handle -- ^ output (socket) handle
+               -> FilePath -- ^ main file?
+               -> String -- ^ command to execute
+               -> IO (IState, FilePath) -- ^ (new state, new file)?
+processJsonCmd orig i h file cmd =
+    case eitherDecode $ BL.fromStrict $ B8.pack cmd of
+        Left err -> hPrint h err >> return (i, file)
+        Right c -> do
+            res <- runErrorT $ evalStateT (processJson file c) i
+            case res of
+                Left err -> hPrint h err >> return (i, file)
+                Right x -> return x
+  where processJson :: FilePath -> Command -> Idris (IState, FilePath)
+        processJson file cmd = do
+            process h file cmd
+            ist <- getIState
+            return (ist, file)
+
 
 processNetCmd :: IState -> IState -> Handle -> FilePath -> String ->
                  IO (IState, FilePath)
@@ -170,6 +209,7 @@ processNetCmd orig i h fn cmd
               Left err -> do hPrint h err
                              return (i, fn)
   where
+    processNet :: FilePath -> Command -> Idris (IState, FilePath)
     processNet fn Reload = processNet fn (Load fn Nothing)
     processNet fn (Load f toline) =
         do let ist = orig { idris_options = idris_options i
@@ -191,7 +231,7 @@ processNetCmd orig i h fn cmd
 -- | Run a command on the server on localhost
 runClient :: String -> IO ()
 runClient str = withSocketsDo $ do
-                  h <- connectTo "localhost" replPort
+                  h <- connectTo "localhost" clientPort
                   hPutStrLn h str
                   resp <- hGetResp "" h
                   putStr resp
@@ -1288,7 +1328,8 @@ idrisMain opts =
 
        when (runrepl && not idesl && not server) $ do
 --          clearOrigPats
-         startRepl orig inputs
+         startClientServer orig inputs
+         startJsonServer orig inputs
          runInputT (replSettings (Just historyFile)) $ repl orig inputs
        when (idesl || server) $ startDependent orig inputs
        ok <- noErrors

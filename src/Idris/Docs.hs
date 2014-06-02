@@ -7,6 +7,7 @@ import Idris.Delaborate
 import Idris.Core.TT
 import Idris.Core.Evaluate
 import Idris.Docstrings
+import Idris.Util (safeHead)
 
 import Util.Pretty
 
@@ -113,9 +114,6 @@ pprintDocs ist (ClassDoc n doc meths params instances superclasses)
     prettifySubclasses (PPi plcity           nm t1 t2) = PPi plcity (safeHead nm pNames) (prettifySubclasses t1) (prettifySubclasses t2)
     prettifySubclasses (PApp fc ref args)              = PApp fc ref $ updateArgs pNames args
     prettifySubclasses tm                              = tm
-
-    safeHead _ (y:_) = y
-    safeHead x []    = x
 
     updateArgs (p:ps) ((PExp prty opts _ ref):as) = (PExp prty opts p (updateRef p ref)) : updateArgs ps as
     updateArgs ps     (a:as)                      = a : updateArgs ps as

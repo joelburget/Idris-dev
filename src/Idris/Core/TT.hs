@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, DeriveFunctor #-}
+{-# LANGUAGE MultiParamTypeClasses, DeriveFunctor, DeriveGeneric #-}
 
 {-| TT is the core language of Idris. The language has:
 
@@ -22,6 +22,8 @@ module Idris.Core.TT(module Idris.Core.TT, module Idris.Core.TC) where
 
 import Idris.Core.TC
 
+import GHC.Generics
+import Data.Aeson (FromJSON, ToJSON)
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Error (Error(..))
 import Debug.Trace
@@ -52,7 +54,10 @@ data FC = FC {
     fc_start :: (Int, Int),
     -- | Line and column numbers for the end of the location span
     fc_end :: (Int, Int)
-    }
+    } deriving Generic
+
+instance ToJSON FC
+instance FromJSON FC
 
 -- | Ignore source location equality (so deriving classes do not compare FCs)
 instance Eq FC where
@@ -114,8 +119,10 @@ data ErrorReportPart = TextPart String
                      | NamePart Name
                      | TermPart Term
                      | SubReport [ErrorReportPart]
-                       deriving (Show, Eq)
+                       deriving (Show, Eq, Generic)
 
+instance ToJSON ErrorReportPart
+instance FromJSON ErrorReportPart
 
 -- Please remember to keep Err synchronised with
 -- Language.Reflection.Errors.Err in the stdlib!
@@ -158,7 +165,10 @@ data Err' t
           | LoadingFailed String (Err' t)
           | ReflectionError [[ErrorReportPart]] (Err' t)
           | ReflectionFailed String (Err' t)
-  deriving (Eq, Functor)
+  deriving (Eq, Functor, Generic)
+
+instance ToJSON Err
+instance FromJSON Err
 
 type Err = Err' Term
 
@@ -274,7 +284,10 @@ data Name = UN T.Text -- ^ User-provided name
           | NErased -- ^ Name of something which is never used in scope
           | SN SpecialName -- ^ Decorated function names
           | SymRef Int -- ^ Reference to IBC file symbol table (used during serialisation)
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
+
+instance ToJSON Name
+instance FromJSON Name
 
 txt :: String -> T.Text
 txt = T.pack
@@ -310,11 +323,14 @@ data SpecialName = WhereN Int Name Name
                  | CaseN Name
                  | ElimN Name
                  | InstanceCtorN Name
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 {-!
 deriving instance Binary SpecialName
 deriving instance NFData SpecialName
 !-}
+
+instance ToJSON SpecialName
+instance FromJSON SpecialName
 
 sInstanceN :: Name -> [String] -> SpecialName
 sInstanceN n ss = InstanceN n (map T.pack ss)
@@ -458,7 +474,10 @@ addAlist [] ctxt = ctxt
 addAlist ((n, tm) : ds) ctxt = addDef n tm (addAlist ds ctxt)
 
 data NativeTy = IT8 | IT16 | IT32 | IT64
-    deriving (Show, Eq, Ord, Enum)
+    deriving (Show, Eq, Ord, Enum, Generic)
+
+instance ToJSON NativeTy
+instance FromJSON NativeTy
 
 instance Pretty NativeTy OutputAnnotation where
     pretty IT8  = text "Bits8"
@@ -468,7 +487,10 @@ instance Pretty NativeTy OutputAnnotation where
 
 data IntTy = ITFixed NativeTy | ITNative | ITBig | ITChar
            | ITVec NativeTy Int
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic)
+
+instance ToJSON IntTy
+instance FromJSON IntTy
 
 intTyName :: IntTy -> String
 intTyName ITNative = "Int"
@@ -478,12 +500,15 @@ intTyName (ITChar) = "Char"
 intTyName (ITVec ity count) = "B" ++ show (nativeTyWidth ity) ++ "x" ++ show count
 
 data ArithTy = ATInt IntTy | ATFloat -- TODO: Float vectors
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic)
 {-!
 deriving instance NFData IntTy
 deriving instance NFData NativeTy
 deriving instance NFData ArithTy
 !-}
+
+instance ToJSON ArithTy
+instance FromJSON ArithTy
 
 instance Pretty ArithTy OutputAnnotation where
     pretty (ATInt ITNative) = text "Int"
@@ -512,11 +537,14 @@ data Const = I Int | BI Integer | Fl Double | Ch Char | Str String
            | B32V (Vector Word32) | B64V (Vector Word64)
            | AType ArithTy | StrType
            | PtrType | ManagedPtrType | BufferType | VoidType | Forgot
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 {-!
 deriving instance Binary Const
 deriving instance NFData Const
 !-}
+
+instance ToJSON Const
+instance FromJSON Const
 
 instance Sized Const where
   size _ = 1
@@ -599,7 +627,10 @@ data Raw = Var Name
          | RType
          | RForce Raw
          | RConstant Const
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON Raw
+instance FromJSON Raw
 
 instance Sized Raw where
   size (Var name) = 1
@@ -639,11 +670,17 @@ data Binder b = Lam   { binderTy  :: !b {-^ type annotation for bound variable-}
               | PVar  { binderTy  :: !b }
                 -- ^ A pattern variable
               | PVTy  { binderTy  :: !b }
-  deriving (Show, Eq, Ord, Functor)
+  deriving (Show, Eq, Ord, Functor, Generic)
 {-!
 deriving instance Binary Binder
 deriving instance NFData Binder
 !-}
+
+instance ToJSON (Binder Raw)
+instance FromJSON (Binder Raw)
+
+instance ToJSON (Binder (TT Name))
+instance FromJSON (Binder (TT Name))
 
 instance Sized a => Sized (Binder a) where
   size (Lam ty) = 1 + size ty
@@ -681,10 +718,13 @@ raw_unapply t = ua [] t where
 -- | Universe expressions for universe checking
 data UExp = UVar Int -- ^ universe variable
           | UVal Int -- ^ explicit universe level
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 {-!
 deriving instance NFData UExp
 !-}
+
+instance ToJSON UExp
+instance FromJSON UExp
 
 instance Sized UExp where
   size _ = 1
@@ -718,11 +758,14 @@ data NameType = Bound
               | Ref
               | DCon {nt_tag :: Int, nt_arity :: Int} -- ^ Data constructor
               | TCon {nt_tag :: Int, nt_arity :: Int} -- ^ Type constructor
-  deriving (Show, Ord)
+  deriving (Show, Ord, Generic)
 {-!
 deriving instance Binary NameType
 deriving instance NFData NameType
 !-}
+
+instance ToJSON NameType
+instance FromJSON NameType
 
 instance Sized NameType where
   size _ = 1
@@ -752,11 +795,14 @@ data TT n = P NameType n (TT n) -- ^ named references with type
           | Erased -- ^ an erased term
           | Impossible -- ^ special case for totality checking
           | TType UExp -- ^ the type of types at some level
-  deriving (Ord, Functor)
+  deriving (Ord, Functor, Generic)
 {-!
 deriving instance Binary TT
 deriving instance NFData TT
 !-}
+
+instance ToJSON (TT Name)
+instance FromJSON (TT Name)
 
 class TermSize a where
   termsize :: Name -> a -> Int

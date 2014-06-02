@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, OverloadedStrings #-}
 module Idris.Colours (
   IdrisColour(..),
   ColourTheme(..),
@@ -8,13 +9,27 @@ module Idris.Colours (
 
 import System.Console.ANSI
 
+import Control.Applicative
+import GHC.Generics
+import Data.Aeson
+
 data IdrisColour = IdrisColour { colour    :: Maybe Color
                                , vivid     :: Bool
                                , underline :: Bool
                                , bold      :: Bool
                                , italic    :: Bool
                                }
-                   deriving (Eq, Show)
+                   deriving (Eq, Show, Generic)
+
+-- HACK(joel)
+instance ToJSON Color where
+    toJSON _ = object ["type" .= ("color" :: String)]
+
+instance FromJSON Color where
+    parseJSON _ = pure Black
+
+instance ToJSON IdrisColour
+instance FromJSON IdrisColour
 
 mkColour :: Color -> IdrisColour
 mkColour c = IdrisColour (Just c) True False False False
@@ -44,9 +59,9 @@ defaultTheme = ColourTheme { keywordColour = IdrisColour Nothing True False True
 colourise :: IdrisColour -> String -> String
 colourise (IdrisColour c v u b i) str = setSGRCode sgr ++ str ++ setSGRCode [Reset]
     where sgr = fg c ++
-                (if u then [SetUnderlining SingleUnderline] else []) ++
-                (if b then [SetConsoleIntensity BoldIntensity] else []) ++
-                (if i then [SetItalicized True] else [])
+                [SetUnderlining SingleUnderline | u] ++
+                [SetConsoleIntensity BoldIntensity | b] ++
+                [SetItalicized True | i]
           fg Nothing = []
           fg (Just c) = [SetColor Foreground (if v then Vivid else Dull) c]
 
@@ -81,4 +96,7 @@ data ColourType = KeywordColour
                 | TypeColour
                 | DataColour
                 | PromptColour
-                  deriving (Eq, Show, Bounded, Enum)
+                  deriving (Eq, Show, Bounded, Enum, Generic)
+
+instance ToJSON ColourType
+instance FromJSON ColourType

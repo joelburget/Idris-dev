@@ -1,11 +1,11 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, DeriveFunctor,
-             TypeSynonymInstances, PatternGuards #-}
+             TypeSynonymInstances, PatternGuards, DeriveGeneric #-}
 
 module Idris.AbsSyntaxTree where
 
 import Idris.Core.TT
 import Idris.Core.Evaluate
-import Idris.Core.Elaborate hiding (Tactic(..))
+import Idris.Core.Elaborate hiding (Tactic(..), Command)
 import Idris.Core.Typecheck
 import Idris.Docstrings
 import IRTS.Lang
@@ -23,6 +23,7 @@ import System.IO
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Error
 
+import Data.Aeson (ToJSON, FromJSON)
 import Data.List hiding (group)
 import Data.Char
 import qualified Data.Map as M
@@ -32,6 +33,7 @@ import qualified Data.Set as S
 import Data.Word (Word)
 import Data.Maybe (fromMaybe)
 
+import GHC.Generics (Generic)
 import Debug.Trace
 
 import Text.PrettyPrint.Annotated.Leijen
@@ -116,7 +118,12 @@ ppOption opt = PPOption {
 ppOptionIst :: IState -> PPOption
 ppOptionIst = ppOption . idris_options
 
-data LanguageExt = TypeProviders | ErrorReflection deriving (Show, Eq, Read, Ord)
+data LanguageExt = TypeProviders
+                 | ErrorReflection
+                 deriving (Show, Eq, Read, Ord, Generic)
+
+instance ToJSON LanguageExt
+instance FromJSON LanguageExt
 
 -- | The output mode in use
 data OutputMode = RawOutput
@@ -128,6 +135,11 @@ data OutputMode = RawOutput
 data ConsoleWidth = InfinitelyWide -- ^ Have pretty-printer assume that lines should not be broken
                   | ColsWide Int -- ^ Manually specified - must be positive
                   | AutomaticWidth -- ^ Attempt to determine width, or 80 otherwise
+                  deriving Generic
+
+-- HACK(joel)
+instance ToJSON ConsoleWidth
+instance FromJSON ConsoleWidth
 
 -- | The global state used in the Idris monad
 data IState = IState {
@@ -285,7 +297,10 @@ data Codegen = ViaC
              | ViaJavaScript
              | ViaLLVM
              | Bytecode
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic)
+
+instance ToJSON Codegen
+instance FromJSON Codegen
 
 -- | REPL commands
 data Command = Quit
@@ -341,6 +356,10 @@ data Command = Quit
              | WhoCalls Name
              | CallsWho Name
              | MakeDoc String                      -- IdrisDoc
+             deriving Generic
+
+instance ToJSON Command
+instance FromJSON Command
 
 
 data Opt = Filename String
@@ -393,7 +412,10 @@ data Opt = Filename String
          | ShowOrigErr
          | AutoWidth -- ^ Automatically adjust terminal width
          | AutoSolve -- ^ Automatically issue "solve" tactic in interactive prover
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic)
+
+instance ToJSON Opt
+instance FromJSON Opt
 
 -- Parsed declarations
 
@@ -429,7 +451,10 @@ instance Ord FixDecl where
 
 
 data Static = Static | Dynamic
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON Static
+instance FromJSON Static
 {-!
 deriving instance Binary Static
 deriving instance NFData Static
@@ -447,7 +472,10 @@ data Plicity = Imp { pargopts :: [ArgOpt],
              | TacImp { pargopts :: [ArgOpt],
                         pstatic :: Static,
                         pscript :: PTerm }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+
+instance ToJSON Plicity
+instance FromJSON Plicity
 
 {-!
 deriving instance Binary Plicity
@@ -663,7 +691,10 @@ updateNs ns t = mapPT updateRef t
 --                                      (map (updateDNs ns) ds)
 -- updateDNs ns c = c
 
-data PunInfo = IsType | IsTerm | TypeOrTerm deriving (Eq, Show)
+data PunInfo = IsType | IsTerm | TypeOrTerm deriving (Eq, Show, Generic)
+
+instance ToJSON PunInfo
+instance FromJSON PunInfo
 
 -- | High level language terms
 data PTerm = PQuote Raw
@@ -704,8 +735,10 @@ data PTerm = PQuote Raw
            | PDisamb [[T.Text]] PTerm -- ^ Preferences for explicit namespaces
            | PUnifyLog PTerm -- ^ dump a trace of unifications when building term
            | PNoImplicits PTerm -- ^ never run implicit converions on the term
-       deriving Eq
+       deriving (Eq, Generic)
 
+instance ToJSON PTerm
+instance FromJSON PTerm
 
 {-!
 deriving instance Binary PTerm
@@ -760,7 +793,11 @@ data PTactic' t = Intro [Name] | Intros | Focus Name
                 | TCheck t
                 | TEval t
                 | Qed | Abandon
-    deriving (Show, Eq, Functor)
+    deriving (Show, Eq, Functor, Generic)
+
+instance ToJSON PTactic
+instance FromJSON PTactic
+
 {-!
 deriving instance Binary PTactic'
 deriving instance NFData PTactic'
@@ -796,11 +833,14 @@ data PDo' t = DoExp  FC t
             | DoBindP FC t t [(t,t)]
             | DoLet  FC Name t t
             | DoLetP FC t t
-    deriving (Eq, Functor)
+    deriving (Eq, Functor, Generic)
 {-!
 deriving instance Binary PDo'
 deriving instance NFData PDo'
 !-}
+
+instance ToJSON PDo
+instance FromJSON PDo
 
 instance Sized a => Sized (PDo' a) where
   size (DoExp fc t) = 1 + size fc + size t
@@ -832,10 +872,16 @@ data PArg' t = PImp { priority :: Int,
                               pname :: Name,
                               getScript :: t,
                               getTm :: t }
-    deriving (Show, Eq, Functor)
+    deriving (Show, Eq, Functor, Generic)
+
+instance ToJSON PArg
+instance FromJSON PArg
 
 data ArgOpt = HideDisplay | InaccessibleArg
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic)
+
+instance ToJSON ArgOpt
+instance FromJSON ArgOpt
 
 instance Sized a => Sized (PArg' a) where
   size (PImp p _ l nm trm) = 1 + size nm + size trm

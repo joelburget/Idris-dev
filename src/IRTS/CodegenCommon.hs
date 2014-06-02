@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 module IRTS.CodegenCommon where
 
 import Idris.Core.TT
@@ -5,12 +6,21 @@ import IRTS.Simplified
 import IRTS.Defunctionalise
 import IRTS.Lang
 
+import GHC.Generics
+import Data.Aeson
 import Control.Exception
 import Data.Word
 import System.Environment
 
 data DbgLevel = NONE | DEBUG | TRACE deriving Eq
-data OutputType = Raw | Object | Executable | MavenProject deriving (Eq, Show)
+data OutputType = Raw
+                | Object
+                | Executable
+                | MavenProject
+                deriving (Eq, Show, Generic)
+
+instance ToJSON OutputType
+instance FromJSON OutputType
 
 environment :: String -> IO (Maybe String)
 environment x = Control.Exception.catch (do e <- getEnv x
@@ -34,7 +44,7 @@ data CodegenInfo = CodegenInfo { outputFile :: String,
                                  debugLevel :: DbgLevel,
                                  simpleDecls :: [(Name, SDecl)],
                                  defunDecls :: [(Name, DDecl)],
-                                 liftDecls :: [(Name, LDecl)] 
-                               } 
+                                 liftDecls :: [(Name, LDecl)]
+                               }
 
 type CodeGenerator = CodegenInfo -> IO ()
