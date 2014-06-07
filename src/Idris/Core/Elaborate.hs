@@ -69,11 +69,11 @@ loadState = do (ES p s e) <- get
 getNameFrom :: Name -> Elab' aux Name
 getNameFrom n = do (ES (p, a) s e) <- get
                    let next = nextname p
-                   let p' = p { nextname = next + 1 } 
+                   let p' = p { nextname = next + 1 }
                    put (ES (p', a) s e)
                    let n' = case n of
                         UN x -> MN (next+100) x
-                        MN i x -> if i == 99999 
+                        MN i x -> if i == 99999
                                      then MN (next+500) x
                                      else MN (next+100) x
                         NS (UN x) s -> MN (next+100) x
@@ -87,7 +87,7 @@ setNextName = do env <- get_env
 
 initNextNameFrom :: [Name] -> Elab' aux ()
 initNextNameFrom ns = do ES (p, a) s e <- get
-                         let n' = maxName (nextname p) ns 
+                         let n' = maxName (nextname p) ns
                          put (ES (p { nextname = n' }, a) s e)
   where
     maxName m ((MN i _) : xs) = maxName (max m i) xs
@@ -122,10 +122,13 @@ execElab a e ps = execStateT e (ES (ps, a) "" Nothing)
 initElaborator :: Name -> Context -> Type -> ProofState
 initElaborator = newProof
 
-elaborate :: Context -> Name -> Type -> aux -> Elab' aux a -> TC (a, String)
-elaborate ctxt n ty d elab = do let ps = initElaborator n ctxt ty
-                                (a, ES ps' str _) <- runElab d elab ps
-                                return $! (a, str)
+elaborate :: Show a => Context -> Name -> Type -> aux -> Elab' aux a -> TC (a, String)
+elaborate ctxt n ty d elab = do
+    let ps = initElaborator n ctxt ty
+    (a, ES ps' str _) <- runElab d elab ps
+    -- let str = "a:" ++ show a ++ "\nstr:" ++ str
+    -- trace str $ return $! (a, str)
+    return (a, str)
 
 force_term :: Elab' aux ()
 force_term = do ES (ps, a) l p <- get
@@ -251,17 +254,17 @@ checkInjective (tm, l, r) = do ctxt <- get_context
                                if isInj ctxt tm then return $! ()
                                 else lift $ tfail (NotInjective tm l r)
   where isInj ctxt (P _ n _)
-            | isConName n ctxt = True
-        isInj ctxt (App f a) = isInj ctxt f
-        isInj ctxt (Constant _) = True
-        isInj ctxt (TType _) = True
-        isInj ctxt (Bind _ (Pi _) sc) = True
-        isInj ctxt _ = False
+            | isConName n ctxt     = True
+        isInj ctxt (App f a)       = isInj ctxt f
+        isInj _ (Constant _)       = True
+        isInj _ (TType _)          = True
+        isInj _ (Bind _ (Pi _) sc) = True
+        isInj _ _                  = False
 
 -- get instance argument names
 get_instances :: Elab' aux [Name]
 get_instances = do ES p _ _ <- get
-                   return $! (instances (fst p))
+                   return $! instances (fst p)
 
 -- given a desired hole name, return a unique hole name
 unique_hole = unique_hole' False
@@ -277,7 +280,7 @@ unique_hole' reusable n
            case n' of
                 MN i _ -> when (i >= nextname p) $
                             put (ES (p { nextname = i + 1 }, a) s u)
-                _ -> return $! ()
+                _ -> return ()
            return $! n'
   where
     bound_in (Bind n b sc) = n : bi b ++ bound_in sc
@@ -461,7 +464,7 @@ prepare_apply fn imps =
            claim n (forget t)
            when i (movelast n)
            mkClaims sc' is ((n', n) : claims) hs
-    mkClaims t [] claims _ = return $! (reverse claims)
+    mkClaims t [] claims _ = return $! reverse claims
     mkClaims _ _ _ _
             | Var n <- fn
                    = do ctxt <- get_context
@@ -652,7 +655,7 @@ no_errors tac err
                case reverse ps' of
                     ((x, y, env, inerr, while, _) : _) ->
                        let env' = map (\(x, b) -> (x, binderTy b)) env in
-                                  lift $ tfail $ 
+                                  lift $ tfail $
                                          case err of
                                               Nothing -> CantUnify False x y inerr env' 0
                                               Just e -> e
@@ -727,7 +730,7 @@ tryAll xs = tryAll' [] 999999 (cantResolve, 0) xs
        = do s <- get
             ps <- get_probs
             case prunStateT pmax True ps x s of
-                OK ((v, newps, probs), s') -> 
+                OK ((v, newps, probs), s') ->
                     do let cs' = if (newps < pmax)
                                     then [do put s'; return $! v]
                                     else (do put s'; return $! v) : cs

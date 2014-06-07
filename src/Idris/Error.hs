@@ -19,6 +19,9 @@ import System.IO.Error(isUserError, ioeGetErrorString)
 import Data.Char
 import Data.Typeable
 
+import qualified Data.ByteString.Lazy.Char8 as B8
+import Data.Aeson (encode)
+
 iucheck :: Idris ()
 iucheck = do tit <- typeInType
              when (not tit) $

@@ -62,7 +62,7 @@ recheckC fc env t
 checkDef fc ns = checkAddDef False True fc ns
 
 checkAddDef add toplvl fc [] = return []
-checkAddDef add toplvl fc ((n, (i, top, t)) : ns) 
+checkAddDef add toplvl fc ((n, (i, top, t)) : ns)
                = do ctxt <- getContext
                     (t', _) <- recheckC fc [] t
                     when add $ do addDeferred [(n, (i, top, t, toplvl))]
@@ -128,7 +128,7 @@ elabType' norm info syn doc argDocs fc opts n ty' = {- let ty' = piBind (params 
                                         [TI _ True _ _ _] -> True
                                         _ -> False
                         _ -> False
-         -- Productivity checking now via checking for guarded 'Delay' 
+         -- Productivity checking now via checking for guarded 'Delay'
          let opts' = opts -- if corec then (Coinductive : opts) else opts
          let usety = if norm then nty' else nty
          ds <- checkDef fc [(n, (-1, Nothing, usety))]
@@ -293,7 +293,7 @@ elabData info syn doc argDocs fc opts (PDatadecl n t_in dcons)
                 [oi] -> putIState ist{ idris_optimisation = addDef n oi{ detaggable = True } opt }
                 _    -> putIState ist{ idris_optimisation = addDef n (Optimise [] True) opt }
 
-        checkDefinedAs fc n t ctxt 
+        checkDefinedAs fc n t ctxt
             = case lookupDef n ctxt of
                    [] -> return ()
                    [TyDecl _ ty] ->
@@ -505,7 +505,7 @@ elabEliminator paramPos n ty cons info = do
           case findIndex (== n) oldParams of
             Nothing -> (PPi pl n (removeParamPis oldParams params tyb) (removeParamPis oldParams params tyr))
             Just i  -> (removeParamPis oldParams params tyr)
-        removeParamPis oldParams params (PRef _ n) = 
+        removeParamPis oldParams params (PRef _ n) =
           case findIndex (== n) oldParams of
                Nothing -> (PRef elimFC n)
                Just i  -> let (newname,_,_) = params !! i in (PRef elimFC (newname))
@@ -854,7 +854,7 @@ elabRecord info syn doc fc tyn ty opts cdoc cn cty_in
     getProjs acc (PPi _ n ty s) = getProjs ((n, ty) : acc) s
     getProjs acc r = reverse acc
 
-    getFieldNames (PPi (Exp _ _ _) n _ s) = n : getFieldNames s 
+    getFieldNames (PPi (Exp _ _ _) n _ s) = n : getFieldNames s
     getFieldNames (PPi _ _ _ s) = getFieldNames s
     getFieldNames _ = []
 
@@ -909,7 +909,7 @@ elabRecord info syn doc fc tyn ty opts cdoc cn cty_in
             let pn_in = sMN 0 (show pn ++ "_in")
             let recty_in = substMatches [(pn, PRef fc pn_in)] recty
             let recty_out = substMatches [(pn, PRef fc pn_out)] recty
-            let pt = substMatches inames $ 
+            let pt = substMatches inames $
                        k (implBindUp extras inames (PPi expl pn_out pty
                            (PPi expl rec recty_in recty_out)))
             let pfnTy = PTy emptyDocstring [] defaultSyntax fc [] setname pt
@@ -930,11 +930,11 @@ elabRecord info syn doc fc tyn ty opts cdoc cn cty_in
             return (pn, pfnTy, PClauses fc [] setname [pclause])
 
     implBindUp [] is t = t
-    implBindUp ((n, ty):ns) is t 
+    implBindUp ((n, ty):ns) is t
          = let n' = case lookup n is of
                          Just (PRef _ x) -> x
                          _ -> n in
-               if n `elem` allNamesIn t 
+               if n `elem` allNamesIn t
                   then PPi impl n' ty (implBindUp ns is t)
                   else implBindUp ns is t
 
@@ -981,7 +981,7 @@ elabCon info syn tn codata (doc, argDocs, n, t_in, fc, forcenames)
              else return ()
     tyIs t = tclift $ tfail (At fc (Msg (show t ++ " is not " ++ show tn)))
 
-    mkLazy (PPi pl n ty sc) 
+    mkLazy (PPi pl n ty sc)
         = let ty' = if getTyName ty
                        then PApp fc (PRef fc (sUN "Lazy'"))
                             [pexp (PRef fc (sUN "LazyCodata")),
@@ -1194,18 +1194,18 @@ elabClauses info fc opts n_in cs = let n = liftname info n_in in
 
     getLHS (_, l, _) = l
 
-    simple_lhs ctxt (Right (x, y)) = Right (normalise ctxt [] x, 
+    simple_lhs ctxt (Right (x, y)) = Right (normalise ctxt [] x,
                                             force (normalisePats ctxt [] y))
     simple_lhs ctxt t = t
 
-    simple_rt ctxt (p, x, y) = (p, x, force (uniqueBinders p 
+    simple_rt ctxt (p, x, y) = (p, x, force (uniqueBinders p
                                                 (rt_simplify ctxt [] y)))
 
     -- this is so pattern types are in the right form for erasure
-    normalisePats ctxt env (Bind n (PVar t) sc) 
+    normalisePats ctxt env (Bind n (PVar t) sc)
        = let t' = normalise ctxt env t in
              Bind n (PVar t') (normalisePats ctxt ((n, PVar t') : env) sc)
-    normalisePats ctxt env (Bind n (PVTy t) sc) 
+    normalisePats ctxt env (Bind n (PVTy t) sc)
        = let t' = normalise ctxt env t in
              Bind n (PVTy t') (normalisePats ctxt ((n, PVar t') : env) sc)
     normalisePats ctxt env t = t
@@ -1234,10 +1234,10 @@ elabPE info fc caller r =
   do ist <- getIState
      let sa = getSpecApps ist [] r
      mapM_ (mkSpecialised ist) sa
-  where 
-    -- TODO: Add a PTerm level transformation rule, which is basically the 
-    -- new definition in reverse (before specialising it). 
-    -- RHS => LHS where implicit arguments are left blank in the 
+  where
+    -- TODO: Add a PTerm level transformation rule, which is basically the
+    -- new definition in reverse (before specialising it).
+    -- RHS => LHS where implicit arguments are left blank in the
     -- transformation.
 
     -- Apply that transformation after every PClauses elaboration
@@ -1252,16 +1252,16 @@ elabPE info fc caller r =
         idrisCatch
           (when (undef && all (concreteArg ist) (snd specapp)) $ do
             cgns <- getAllNames n
-            let opts = [Specialise (map (\x -> (x, Nothing)) cgns ++ 
+            let opts = [Specialise (map (\x -> (x, Nothing)) cgns ++
                                      mapMaybe specName (snd specapp))]
             logLvl 3 $ "Specialising application: " ++ show specapp
             logLvl 2 $ "New name: " ++ show newnm
             iLOG $ "PE definition type : " ++ (show specTy)
                         ++ "\n" ++ show opts
             logLvl 2 $ "PE definition " ++ show newnm ++ ":\n" ++
-                        showSep "\n" 
+                        showSep "\n"
                            (map (\ (lhs, rhs) ->
-                              (showTmImpls lhs ++ " = " ++ 
+                              (showTmImpls lhs ++ " = " ++
                                showTmImpls rhs)) pats)
             elabType info defaultSyntax emptyDocstring [] fc opts newnm specTy
             let def = map (\ (lhs, rhs) -> PClause fc newnm lhs [] rhs []) pats
@@ -1270,9 +1270,9 @@ elabPE info fc caller r =
           -- if it doesn't work, just don't specialise. Could happen for lots
           -- of valid reasons (e.g. local variables in scope which can't be
           -- lifted out).
-          (\e -> logLvl 4 $ "Couldn't specialise: " ++ (pshow ist e)) 
+          (\e -> logLvl 4 $ "Couldn't specialise: " ++ (pshow ist e))
 
-    specName (ImplicitS, tm) 
+    specName (ImplicitS, tm)
         | (P Ref n _, _) <- unApply tm = Just (n, Just 1)
     specName (ExplicitS, tm)
         | (P Ref n _, _) <- unApply tm = Just (n, Just 1)
@@ -1300,8 +1300,8 @@ elabPE info fc caller r =
               _ -> error "Can't happen (getSpecTy)"
 
     getSpecClause ist (n, args)
-       = let newnm = sUN ("__"++show (nsroot n) ++ "_" ++ 
-                               showSep "_" (map showArg args)) in 
+       = let newnm = sUN ("__"++show (nsroot n) ++ "_" ++
+                               showSep "_" (map showArg args)) in
                                -- UN (show n ++ show (map snd args)) in
              (n, newnm, mkPE_TermDecl ist newnm n args)
       where showArg (ExplicitS, n) = show n
@@ -1322,11 +1322,12 @@ elabValBind info aspat norm tm_in
         --    * elaboration as a Type
         --    * elaboration as a function a -> b
 
+        let x1 = build i info aspat [Reflection] (sMN 0 "val") (infTerm tm)
+            x2 = elaborate ctxt (sMN 0 "val") infP [] x1
         ((tm', defer, is), _) <-
 --             tctry (elaborate ctxt (MN 0 "val") (TType (UVal 0)) []
 --                        (build i info aspat (MN 0 "val") tm))
-                tclift (elaborate ctxt (sMN 0 "val") infP []
-                        (build i info aspat [Reflection] (sMN 0 "val") (infTerm tm)))
+                tclift x2
         let vtm = orderPats (getInferTerm tm')
 
         def' <- checkDef (fileFC "(input)") defer
@@ -1379,8 +1380,8 @@ checkPossible info fc tcgen fname lhs_in
           validCase ctxt (Elaborating _ _ e) = validCase ctxt e
           validCase ctxt (ElaboratingArg _ _ _ e) = validCase ctxt e
           validCase ctxt _ = True
-           
-          recoverable ctxt (CantUnify r topx topy e _ _) 
+
+          recoverable ctxt (CantUnify r topx topy e _ _)
               = let topx' = normalise ctxt [] topx
                     topy' = normalise ctxt [] topy in
                     checkRec topx' topy'
@@ -1389,7 +1390,7 @@ checkPossible info fc tcgen fname lhs_in
           recoverable ctxt (ElaboratingArg _ _ _ e) = recoverable ctxt e
           recoverable _ _ = False
 
-          sameFam topx topy 
+          sameFam topx topy
               = case (unApply topx, unApply topy) of
                      ((P _ x _, _), (P _ y _, _)) -> x == y
                      _ -> False
@@ -1400,11 +1401,11 @@ checkPossible info fc tcgen fname lhs_in
 
           checkRec (App f a) p@(P _ _ _) = checkRec f p
           checkRec p@(P _ _ _) (App f a) = checkRec p f
-          checkRec fa@(App _ _) fa'@(App _ _) 
+          checkRec fa@(App _ _) fa'@(App _ _)
               | (f, as) <- unApply fa,
                 (f', as') <- unApply fa'
-                   = if (length as /= length as') 
-                        then checkRec f f' 
+                   = if (length as /= length as')
+                        then checkRec f f'
                         else checkRec f f' && and (zipWith checkRec as as')
           checkRec (P xt x _) (P yt y _) = x == y || ntRec xt yt
           checkRec _ _ = False
@@ -1436,7 +1437,7 @@ getFlexInType i env ps tm@(App f a)
     | (P _ tn _, args) <- unApply tm
        = case lookupCtxt tn (idris_datatypes i) of
             [t] -> nub $ paramNames args env [x | x <- [0..length args],
-                                                  not (x `elem` param_pos t)] 
+                                                  not (x `elem` param_pos t)]
                           ++ getFlexInType i env ps f ++
                              getFlexInType i env ps a
             [] -> nub $ getFlexInType i env ps f ++
@@ -1484,7 +1485,7 @@ elabClause info opts (_, PClause fc fname lhs_in [] PImpossible [])
         let lhs = addImpl i lhs_in
         b <- checkPossible info fc tcgen fname lhs_in
         case b of
-            True -> tclift $ tfail (At fc 
+            True -> tclift $ tfail (At fc
                                 (Msg $ show lhs_in ++ " is a valid case"))
             False -> do ptm <- mkPatTm lhs_in
                         return (Left ptm, lhs)
@@ -1532,7 +1533,7 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
                                then recheckC fc [] lhs_tm
                                else return (lhs_tm, lhs_ty)
         let clhs = normalise ctxt [] clhs_c
-        
+
         logLvl 3 ("Normalised LHS: " ++ showTmImpls (delabMV i clhs))
 
         rep <- useREPL
@@ -1569,7 +1570,7 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
            tclift $ elaborate ctxt (sMN 0 "patRHS") clhsty []
                     (do pbinds ist lhs_tm
                         mapM_ setinj (nub (params ++ inj))
-                        setNextName 
+                        setNextName
                         (_, _, is) <- errAt "right hand side of " fname
                                          (erun fc (build i winfo False opts fname rhs))
                         errAt "right hand side of " fname
@@ -1586,7 +1587,7 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
 
         logLvl 5 "DONE CHECK"
         logLvl 2 $ "---> " ++ show rhs'
-        when (not (null defer)) $ iLOG $ "DEFERRED " ++ 
+        when (not (null defer)) $ iLOG $ "DEFERRED " ++
                     show (map (\ (n, (_,_,t)) -> (n, t)) defer)
         def' <- checkDef fc defer
         let def'' = map (\(n, (i, top, t)) -> (n, (i, top, t, False))) def'
@@ -1605,7 +1606,7 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
         ctxt <- getContext
         logLvl 5 $ "Rechecking"
         logLvl 6 $ " ==> " ++ show (forget rhs')
-        (crhs, crhsty) <- if not inf 
+        (crhs, crhsty) <- if not inf
                              then recheckC fc [] rhs'
                              else return (rhs', clhsty)
         logLvl 6 $ " ==> " ++ show crhsty ++ "   against   " ++ show clhsty
@@ -1618,16 +1619,16 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
         -- then we'll try running it in reverse to improve error messages
         let (ret_fam, _) = unApply (getRetTy crhsty)
         rev <- case ret_fam of
-                    P _ rfamn _ -> 
+                    P _ rfamn _ ->
                         case lookupCtxt rfamn (idris_datatypes i) of
-                             [TI _ _ dopts _ _] -> 
+                             [TI _ _ dopts _ _] ->
                                  return (DataErrRev `elem` dopts)
                              _ -> return False
                     _ -> return False
 
         when (rev || ErrorReverse `elem` opts) $ do
            addIBC (IBCErrRev (crhs, clhs))
-           addErrRev (crhs, clhs) 
+           addErrRev (crhs, clhs)
         return $ (Right (clhs, crhs), lhs)
   where
     pinfo :: ElabInfo -> [(Name, PTerm)] -> [Name] -> Int -> ElabInfo
@@ -1679,7 +1680,7 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
     isArg :: Name -> PDecl -> Bool
     isArg n (PClauses _ _ _ cs) = any isArg' cs
       where
-        isArg' (PClause _ _ (PApp _ _ args) _ _ _) 
+        isArg' (PClause _ _ (PApp _ _ args) _ _ _)
            = any (\x -> case x of
                           PRef _ n' -> n == n'
                           _ -> False) (map getTm args)
@@ -2041,7 +2042,7 @@ elabInstance info syn what fc cs n ps t expn ds = do
     (n, ci) <- case lookupCtxtName n (idris_classes i) of
                   [c] -> return c
                   [] -> ifail $ show fc ++ ":" ++ show n ++ " is not a type class"
-                  cs -> tclift $ tfail $ At fc 
+                  cs -> tclift $ tfail $ At fc
                            (CantResolveAlts (map (show . fst) cs))
     let constraint = PApp fc (PRef fc n) (map pexp ps)
     let iname = mkiname n ps expn
@@ -2055,7 +2056,7 @@ elabInstance info syn what fc cs n ps t expn ds = do
                                 (class_instances ci)
                           addInstance intInst n iname
             Just _ -> addInstance intInst n iname
-    when (what /= ETypes && (not (null ds && not emptyclass))) $ do 
+    when (what /= ETypes && (not (null ds && not emptyclass))) $ do
          let ips = zip (class_params ci) ps
          let ns = case n of
                     NS n ns' -> ns'
@@ -2071,7 +2072,7 @@ elabInstance info syn what fc cs n ps t expn ds = do
          mapM_ (elabDecl EAll info) undefinedSuperclassInstances
          let all_meths = map (nsroot . fst) (class_methods ci)
          let mtys = map (\ (n, (op, t)) ->
-                   let t_in = substMatchesShadow ips pnames t 
+                   let t_in = substMatchesShadow ips pnames t
                        mnamemap = map (\n -> (n, PRef fc (decorate ns iname n)))
                                       all_meths
                        t' = substMatchesShadow mnamemap pnames t_in in
@@ -2093,7 +2094,7 @@ elabInstance info syn what fc cs n ps t expn ds = do
          -- Bring variables in instance head into scope
          ist <- getIState
          let headVars = nub $ mapMaybe (\p -> case p of
-                                               PRef _ n -> 
+                                               PRef _ n ->
                                                   case lookupTy n (tt_ctxt ist) of
                                                       [] -> Just n
                                                       _ -> Nothing
@@ -2273,7 +2274,7 @@ decorateid decorate (PClauses f o n cs)
 
 -- if 't' is a type class application, assume its arguments are injective
 pbinds :: IState -> Term -> ElabD ()
-pbinds i (Bind n (PVar t) sc) 
+pbinds i (Bind n (PVar t) sc)
     = do attack; patbind n
          case unApply t of
               (P _ c _, args) -> case lookupCtxt c (idris_classes i) of
@@ -2359,11 +2360,11 @@ elabDecl' what info (PMutual f ps)
   where isDataDecl (PData _ _ _ _ _ _) = True
         isDataDecl _ = False
 
-        setMutData ns n 
+        setMutData ns n
            = do i <- getIState
                 case lookupCtxt n (idris_datatypes i) of
                    [x] -> do let x' = x { mutual_types = ns }
-                             putIState $ i { idris_datatypes 
+                             putIState $ i { idris_datatypes
                                                 = addDef n x' (idris_datatypes i) }
                    _ -> return ()
 

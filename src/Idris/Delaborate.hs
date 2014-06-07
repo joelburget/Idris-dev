@@ -1,5 +1,5 @@
 {-# LANGUAGE PatternGuards #-}
-module Idris.Delaborate (bugaddr, delab, delab', delabMV, delabTy, delabTy', pprintErr) where
+module Idris.Delaborate (bugaddr, delab, delab', delabMV, delabTy, delabTy', pprintErr, isUN) where
 
 -- Convert core TT back into high level syntax, primarily for display
 -- purposes.
@@ -100,10 +100,10 @@ delabTy' ist imps tm fullname mvs = de [] imps tm
          | n == eqTy    = PEq un (de env [] l) (de env [] r)
          | n == sUN "Ex_intro" = PDPair un IsTerm (de env [] l) Placeholder
                                            (de env [] r)
-    deFn env f@(P _ n _) args 
-         | n `elem` map snd env 
+    deFn env f@(P _ n _) args
+         | n `elem` map snd env
               = PApp un (de env [] f) (map pexp (map (de env []) args))
-    deFn env (P _ n _) args 
+    deFn env (P _ n _) args
          | not mvs = case lookup n (idris_metavars ist) of
                         Just (Just _, mi, _) ->
                             mkMVApp n (drop mi (map (de env []) args))

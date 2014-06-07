@@ -4,7 +4,8 @@
 
    * Full dependent types
 
-   * A hierarchy of universes, with cumulativity: Type : Type1, Type1 : Type2, ...
+   * A hierarchy of universes, with cumulativity:
+     Type : Type1, Type1 : Type2, ...
 
    * Pattern matching letrec binding
 
@@ -12,10 +13,11 @@
 
    Some technical stuff:
 
-   * Typechecker is kept as simple as possible - no unification, just a checker for incomplete terms.
+   * Typechecker is kept as simple as possible - no unification, just
+     a checker for incomplete terms.
 
-   * We have a simple collection of tactics which we use to elaborate source
-     programs with implicit syntax into fully explicit terms.
+   * We have a simple collection of tactics which we use to elaborate
+     source programs with implicit syntax into fully explicit terms.
 -}
 
 module Idris.Core.TT(module Idris.Core.TT, module Idris.Core.TC) where
@@ -649,14 +651,17 @@ deriving instance NFData Raw
 !-}
 
 -- The type parameter `b` will normally be something like `TT Name` or just
--- `Raw`. We do not make a type-level distinction between TT terms that happen
--- to be TT types and TT terms that are not TT types.
--- | All binding forms are represented in a uniform fashion. This type only represents
--- the types of bindings (and their values, if any); the attached identifiers are part
--- of the 'Bind' constructor for the 'TT' type.
+-- `Raw`. We do not make a type-level distinction between TT terms that
+-- happen to be TT types and TT terms that are not TT types.
+--
+-- | All binding forms are represented in a uniform fashion. This type only
+-- represents the types of bindings (and their values, if any); the
+-- attached identifiers are part of the 'Bind' constructor for the 'TT'
+-- type.
 data Binder b = Lam   { binderTy  :: !b {-^ type annotation for bound variable-}}
               | Pi    { binderTy  :: !b }
-                {-^ A binding that occurs in a function type expression, e.g. @(x:Int) -> ...@ -}
+              -- ^ A binding that occurs in a function type expression,
+              -- e.g. @(x:Int) -> ...@
               | Let   { binderTy  :: !b,
                         binderVal :: b {-^ value for bound variable-}}
                 -- ^ A binding that occurs in a @let@ expression

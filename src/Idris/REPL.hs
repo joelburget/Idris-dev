@@ -1,5 +1,5 @@
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, DeriveFunctor,
-             PatternGuards, CPP #-}
+             PatternGuards, CPP, ConstraintKinds #-}
 
 module Idris.REPL where
 
@@ -24,6 +24,7 @@ import Idris.Help
 import Idris.Completion
 import qualified Idris.IdeSlave as IdeSlave
 import qualified Idris.Server as Server
+import Idris.CoreServer (startCoreServer)
 import Idris.Chaser
 import Idris.Imports
 import Idris.Colours hiding (colourise)
@@ -51,12 +52,18 @@ import Idris.Core.Constraints
 import IRTS.Compiler
 import IRTS.CodegenCommon
 
-import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Lazy.Char8 as B8
 import qualified Data.ByteString.Lazy as BL
 import Data.List.Split (splitOn)
 import qualified Data.Text as T
 
 import Text.Trifecta.Result(Result(..))
+
+import Conduit as C
+import Data.IORef
+import Network.HTTP.Types
+import Network.Wai as W
+import Network.Wai.Handler.Warp as W
 
 -- import RTS.SC
 -- import RTS.Bytecode
@@ -75,7 +82,7 @@ import Control.Monad
 import Control.Monad.Trans.Error (ErrorT(..))
 import Control.Monad.Trans.State.Strict ( StateT, execStateT, evalStateT, get, put )
 import Control.Monad.Trans ( lift )
-import Data.Aeson (eitherDecode)
+import Data.Aeson (encode, eitherDecode, toJSON)
 import Data.Maybe
 import Data.List
 import Data.Char
@@ -89,15 +96,15 @@ import System.Exit
 import System.Environment
 import System.Process
 import System.Directory
-import System.IO
+import System.IO as IO
 
 import Debug.Trace
 
 clientPort :: PortID
 clientPort = PortNumber 4294
 
-jsonPort :: PortID
-jsonPort = PortNumber 4295
+jsonPort :: Int
+jsonPort = 4295
 
 -- | Run the REPL
 repl :: IState -- ^ The initial state
@@ -146,12 +153,81 @@ repl orig mods
 
          showM c thm n = if c then colouriseFun thm (show n)
                               else show n
+
 type ConnectionHandler = IState
                       -> IState
-                      -> Handle
+                      -> IO.Handle
                       -> FilePath
                       -> String
                       -> IO (IState, FilePath)
+
+type Mon m = (MonadIO m, MonadResource m)
+
+startJsonServer :: IState -> [FilePath] -> Idris ()
+startJsonServer orig files = runIO $ do
+    ref <- newIORef (orig, head files)
+    void $ forkOS $ serverLoop ref
+  where serverLoop :: IORef (IState, FilePath) -> IO ()
+        serverLoop ref = run jsonPort $ app ref
+
+        app :: IORef (IState, FilePath) -> Request -> IO Response
+        app ref req = runResourceT $ getBody req $= parse $$ respond ref
+
+        getBody :: Mon m => Request -> Source m BL.ByteString
+        getBody req = do
+            Just body <- liftIO $ requestBody req $$ await
+            C.yield $ BL.fromStrict body
+
+        show' :: Show a => a -> BL.ByteString
+        show' = B8.pack . show
+
+        parse :: Mon m => Conduit BL.ByteString m (Either String Command)
+        parse = do
+            Just body <- await
+            let decoded = eitherDecode body
+            C.yield decoded
+            -- C.yield $ eitherDecode body
+
+        respond :: Mon m
+                => IORef (IState, FilePath)
+                -> Sink (Either String Command) m Response
+        respond ref = do
+            Just cmd <- await
+            liftIO $ do
+                putStrLn "cmd:"
+                print $ toJSON cmd
+                putStrLn ""
+            (ist, file) <- liftIO $ readIORef ref
+            liftIO $ putStrLn "got ist and file"
+            case cmd of
+                Left err -> do
+                    liftIO $ putStrLn "first"
+                    return $ responseLBS badRequest400 headers $ show' err
+                Right c -> do
+                    res <- liftIO $
+                        runErrorT $ evalStateT (processJson file c) ist
+                    case res of
+                        Left err -> do
+                            liftIO $ putStrLn "second"
+                            return $ responseLBS badRequest400 headers $ show' err
+                        Right (ist', file', output) -> do
+                            liftIO $ putStrLn "third"
+                            liftIO $ writeIORef ref (ist', file')
+                            return $ responseLBS ok200 headers $ encode output
+
+        headers = [ (hContentType, BL.toStrict $ B8.pack "text/json") ]
+
+        processJson :: FilePath
+                    -> Command
+                    -> Idris (IState, FilePath, String)
+        processJson file cmd = do
+            -- TODO(joel) this is nasty.
+            (fp, h) <- runIO $ IO.openTempFile "." "processJson"
+            process h file cmd
+            runIO $ hClose h
+            bs <- runIO $ IO.readFile fp
+            ist <- getIState
+            return (ist, file, bs)
 
 startServer :: PortID -> ConnectionHandler -> IState -> [FilePath] -> Idris ()
 startServer port handler orig files = void $ runIO $ forkOS serverLoop
@@ -174,17 +250,14 @@ startServer port handler orig files = void $ runIO $ forkOS serverLoop
 startClientServer :: IState -> [FilePath] -> Idris ()
 startClientServer = startServer clientPort processNetCmd
 
-startJsonServer :: IState -> [FilePath] -> Idris ()
-startJsonServer = startServer jsonPort processJsonCmd
-
 processJsonCmd :: IState -- ^ original state?
                -> IState -- ^ current state?
-               -> Handle -- ^ output (socket) handle
+               -> IO.Handle -- ^ output (socket) handle
                -> FilePath -- ^ main file?
                -> String -- ^ command to execute
                -> IO (IState, FilePath) -- ^ (new state, new file)?
 processJsonCmd orig i h file cmd =
-    case eitherDecode $ BL.fromStrict $ B8.pack cmd of
+    case eitherDecode $ {- BL.fromStrict $ -} B8.pack cmd of
         Left err -> hPrint h err >> return (i, file)
         Right c -> do
             res <- runErrorT $ evalStateT (processJson file c) i
@@ -197,8 +270,7 @@ processJsonCmd orig i h file cmd =
             ist <- getIState
             return (ist, file)
 
-
-processNetCmd :: IState -> IState -> Handle -> FilePath -> String ->
+processNetCmd :: IState -> IState -> IO.Handle -> FilePath -> String ->
                  IO (IState, FilePath)
 processNetCmd orig i h fn cmd
     = do res <- case parseCmd i "(net)" cmd of
@@ -584,9 +656,11 @@ processInput cmd orig inputs
                                  return (Just inputs)
             Success Quit -> do when (not quiet) (iputStrLn "Bye bye")
                                return Nothing
-            Success cmd  -> do idrisCatch (process stdout fn cmd)
-                                          (\e -> do msg <- showErr e ; iputStrLn msg)
-                               return (Just inputs)
+            Success cmd  -> do
+                liftIO $ print $ encode cmd
+                idrisCatch (process stdout fn cmd)
+                           (showErr >=> iputStrLn)
+                return (Just inputs)
 
 resolveProof :: Name -> Idris Name
 resolveProof n'
@@ -646,25 +720,31 @@ insertScript prf (p@"---------- Proofs ----------" : "" : xs)
     = p : "" : prf : xs
 insertScript prf (x : xs) = x : insertScript prf xs
 
-process :: Handle -> FilePath -> Command -> Idris ()
+process :: IO.Handle -> FilePath -> Command -> Idris ()
 process h fn Help = iPrintResult displayHelp
 process h fn (ChangeDirectory f)
                  = do runIO $ setCurrentDirectory f
                       return ()
-process h fn (Eval t)
-                 = withErrorReflection $ do logLvl 5 $ show t
-                                            (tm, ty) <- elabVal toplevel False t
-                                            ctxt <- getContext
-                                            let tm' = force (normaliseAll ctxt [] tm)
-                                            let ty' = force (normaliseAll ctxt [] ty)
-                                            -- Add value to context, call it "it"
-                                            updateContext (addCtxtDef (sUN "it") (Function ty' tm'))
-                                            ist <- getIState
-                                            logLvl 3 $ "Raw: " ++ show (tm', ty')
-                                            logLvl 10 $ "Debug: " ++ showEnvDbg [] tm'
-                                            let tmDoc = prettyIst ist (delab ist tm')
-                                                tyDoc = prettyIst ist (delab ist ty')
-                                            ihPrintTermWithType h tmDoc tyDoc
+process h fn (Eval t) = withErrorReflection $ do
+    logLvl 5 $ show t
+    liftIO $ putStrLn "0"
+    (tm, ty) <- elabVal toplevel False t
+    liftIO $ putStrLn "1"
+    ctxt <- getContext
+    liftIO $ putStrLn "2"
+    let tm' = force (normaliseAll ctxt [] tm)
+        ty' = force (normaliseAll ctxt [] ty)
+    -- Add value to context, call it "it"
+    updateContext (addCtxtDef (sUN "it") (Function ty' tm'))
+    liftIO $ putStrLn "3"
+    ist <- getIState
+    liftIO $ putStrLn "4"
+    logLvl 3 $ "Raw: " ++ show (tm', ty')
+    logLvl 10 $ "Debug: " ++ showEnvDbg [] tm'
+    runIO $ B8.hPutStrLn h $ encode (tm, ty)
+    -- let tmDoc = prettyIst ist (delab ist tm')
+    -- tyDoc = prettyIst ist (delab ist ty')
+    -- ihPrintTermWithType h tmDoc tyDoc
 
 process h fn (ExecVal t)
                   = do ctxt <- getContext
@@ -1066,8 +1146,8 @@ helphead =
   ]
 
 
-replSettings :: Maybe FilePath -> Settings Idris
-replSettings hFile = setComplete replCompletion $ defaultSettings {
+replSettings :: Maybe FilePath -> H.Settings Idris
+replSettings hFile = setComplete replCompletion $ H.defaultSettings {
                        historyFile = hFile
                      }
 
@@ -1085,7 +1165,7 @@ idris opts = do res <- runErrorT $ execStateT totalMain idrisInit
                            [] -> return ()
 
 
-loadInputs :: Handle -> [FilePath] -> Maybe Int -> Idris ()
+loadInputs :: IO.Handle -> [FilePath] -> Maybe Int -> Idris ()
 loadInputs h inputs toline -- furthest line to read in input source files
   = idrisCatch
        (do ist <- getIState
@@ -1204,6 +1284,9 @@ loadInputs h inputs toline -- furthest line to read in input source files
 idrisMain :: [Opt] -> Idris ()
 idrisMain opts =
     do let inputs = opt getFile opts
+       liftIO $ do
+           putStrLn "inputs:"
+           print inputs
        let quiet = Quiet `elem` opts
        let nobanner = NoBanner `elem` opts
        let idesl = Ideslave `elem` opts
@@ -1326,10 +1409,34 @@ idrisMain opts =
 
        historyFile <- fmap (</> "repl" </> "history") getIdrisUserDataDir
 
+       {-
+       liftIO $ do
+           putStrLn "tt_ctxt"
+           print $ tt_ctxt orig
+           putStrLn "idris_constraints"
+           print $ idris_constraints orig
+           putStrLn "idris_docstrings"
+           print $ idris_docstrings orig
+           putStrLn "idris_classes"
+           print $ idris_classes orig
+           putStrLn "idris_implicits"
+           print $ idris_implicits orig
+           putStrLn "idris_callgraph"
+           print $ idris_callgraph orig
+           putStrLn "idris_calledgraph"
+           print $ idris_calledgraph orig
+           putStrLn "idris_tyinfodata"
+           print $ idris_tyinfodata orig
+           putStrLn "idris_whocalls"
+           print $ idris_whocalls orig
+           putStrLn "idris_callswho"
+           print $ idris_callswho orig
+           -}
        when (runrepl && not idesl && not server) $ do
 --          clearOrigPats
          startClientServer orig inputs
          startJsonServer orig inputs
+         liftIO $ startCoreServer orig inputs
          runInputT (replSettings (Just historyFile)) $ repl orig inputs
        when (idesl || server) $ startDependent orig inputs
        ok <- noErrors
@@ -1375,7 +1482,7 @@ initScript = do script <- getInitScript
                                  runInit h
                                  runIO $ hClose h)
                            (\e -> iPrintError $ "Error reading init file: " ++ show e)
-    where runInit :: Handle -> Idris ()
+    where runInit :: IO.Handle -> Idris ()
           runInit h = do eof <- lift . lift $ hIsEOF h
                          ist <- getIState
                          unless eof $ do

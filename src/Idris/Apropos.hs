@@ -20,15 +20,19 @@ import qualified Data.Text as T
 apropos :: IState -> T.Text -> [Name]
 apropos ist what = let defs = ctxtAlist (tt_ctxt ist)
                        docs = toAlist (idris_docstrings ist)
-                   in nub (map fst (isAproposAll parts defs) ++
-                           map fst (isAproposAll parts docs))
-  where isAproposAll [] xs = xs
-        isAproposAll (what:more) xs = filter (isApropos what)
-                                             (isAproposAll more xs)
+                   in apropos' what defs docs
+
+type Docs = (Docstring, [(Name, Docstring)])
+
+apropos' :: T.Text -> [(Name, Def)] -> [(Name, Docs)] -> [Name]
+apropos' what defs docs = nub $ aproposNames defs ++ aproposNames docs
+  where aproposNames :: Apropos a => [(Name, a)] -> [Name]
+        aproposNames = map fst . isAproposAll parts
+        isAproposAll more xs = foldr (filter . isApropos) xs more
         parts = filter ((> 0) . T.length) . T.splitOn (T.pack " ") $ what
 
 textIn :: T.Text -> T.Text -> Bool
-textIn a b = T.isInfixOf (T.toLower a) (T.toLower b)
+textIn a b = T.toLower a `T.isInfixOf` T.toLower b
 
 class Apropos a where
   isApropos :: T.Text -> a -> Bool
@@ -41,7 +45,7 @@ instance Apropos Name where
                   | n == falseTy && str == T.pack "_|_" = True
                   | (n == pairTy || n == pairCon) && str == T.pack "," = True
                   | n == eqTy && str == T.pack "=" = True
-                  | n == eqCon && (T.toLower str) == T.pack "refl" = True
+                  | n == eqCon && T.toLower str == T.pack "refl" = True
                   | (n == sigmaTy || n == existsCon) && str == T.pack "**" = True
   isApropos _   _          = False -- we don't care about case blocks, MNs, etc
 
@@ -72,7 +76,7 @@ instance Apropos Const where
   isApropos str c = textIn str (T.pack (show c))
 
 instance Apropos Docstring where
-  isApropos str d = containsText str d
+  isApropos = containsText
 
 instance (Apropos a, Apropos b) => Apropos (a, b) where
   isApropos str (x, y) = isApropos str x || isApropos str y

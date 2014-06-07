@@ -561,6 +561,7 @@ Library
                 , Idris.Providers
                 , Idris.REPL
                 , Idris.REPLParser
+                , Idris.CoreServer
                 , Idris.Server
                 , Idris.Transforms
                 , Idris.TypeSearch
@@ -604,7 +605,7 @@ Library
 
   Build-depends:  base >=4 && <5
                 , Cabal
-                , aeson >= 0.7
+                , aeson == 0.7.0.6
                 , annotated-wl-pprint >= 0.5.3
                 , ansi-terminal
                 , ansi-wl-pprint
@@ -638,6 +639,12 @@ Library
                 , deepseq
                 , zlib
                 , optparse-applicative
+                , warp >= 2.0
+                , wai == 2.1.0.3
+                , conduit
+                , conduit-combinators
+                , http-types
+                , void
   Extensions:     MultiParamTypeClasses
                 , FunctionalDependencies
                 , FlexibleContexts

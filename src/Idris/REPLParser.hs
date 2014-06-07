@@ -48,11 +48,11 @@ pCmd = do P.whiteSpace; try (do cmd ["q", "quit"]; eof; return Quit)
               <|> try (do cmd ["rmproof"]; n <- P.name; eof; return (RmProof n))
               <|> try (do cmd ["showproof"]; n <- P.name; eof; return (ShowProof n))
               <|> try (do cmd ["log"]; i <- P.natural; eof; return (LogLvl (fromIntegral i)))
-              <|> try (do cmd ["lto", "loadto"]; 
+              <|> try (do cmd ["lto", "loadto"];
                           toline <- P.natural
-                          f <- many anyChar; 
+                          f <- many anyChar;
                           return (Load f (Just (fromInteger toline))))
-              <|> try (do cmd ["l", "load"]; f <- many anyChar; 
+              <|> try (do cmd ["l", "load"]; f <- many anyChar;
                           return (Load f Nothing))
               <|> try (do cmd ["cd"]; f <- many anyChar; return (ChangeDirectory f))
               <|> try (do cmd ["spec"]; P.whiteSpace; t <- P.fullExpr defaultSyntax; return (Spec t))
@@ -71,7 +71,7 @@ pCmd = do P.whiteSpace; try (do cmd ["q", "quit"]; eof; return Quit)
               <|> try (do cmd ["color", "colour"]; pSetColourCmd)
               <|> try (do cmd ["set"]; o <- pOption; return (SetOpt o))
               <|> try (do cmd ["unset"]; o <- pOption; return (UnsetOpt o))
-              <|> try (do cmd ["s", "search"]; P.whiteSpace; 
+              <|> try (do cmd ["s", "search"]; P.whiteSpace;
                           t <- P.typeExpr (defaultSyntax { implicitAllowed = True }); return (Search t))
               <|> try (do cmd ["cs", "casesplit"]; P.whiteSpace;
                           upd <- option False (do P.lchar '!'; return True)
@@ -120,8 +120,8 @@ pCmd = do P.whiteSpace; try (do cmd ["q", "quit"]; eof; return Quit)
               <|> try (do cmd ["wc", "whocalls"]; P.whiteSpace; n <- P.fnName ; return (WhoCalls n))
               <|> try (do cmd ["cw", "callswho"]; P.whiteSpace; n <- P.fnName ; return (CallsWho n))
               <|> try (do cmd ["mkdoc"]; str <- many anyChar; return (MakeDoc str))
-              <|> do P.whiteSpace; do eof; return NOP
-                             <|> do t <- P.fullExpr defaultSyntax; return (Eval t)
+              <|> do P.whiteSpace; eof; return NOP
+              <|> (Eval <$> P.fullExpr defaultSyntax)
 
  where toPath n = foldl1' (</>) $ splitOn "." n
 

@@ -1,10 +1,12 @@
 .PHONY: build configure doc install linecount nodefault pinstall lib_clean relib test_c test
 
+IDRIS=./.cabal-sandbox/bin/idris
+
 include config.mk
 -include custom.mk
 
 install:
-	$(CABAL) install $(CABALFLAGS)
+	$(CABAL) install $(CABALFLAGS); terminal-notifier -message "done building!" -title "WAKE UP" -sound default
 
 pinstall: CABALFLAGS += --enable-executable-profiling
 pinstall: dist/setup-config
@@ -16,16 +18,16 @@ build: dist/setup-config
 test: doc test_c
 
 test_c:
-	$(MAKE) -C test IDRIS=../dist/build/idris
+	$(MAKE) -C test IDRIS=$(IDRIS)
 
 test_java:
-	$(MAKE) -C test IDRIS=../dist/build/idris test_java
+	$(MAKE) -C test IDRIS=$(IDRIS)
 
 test_llvm:
-	$(MAKE) -C test IDRIS=../dist/build/idris test_llvm
+	$(MAKE) -C test IDRIS=$(IDRIS)
 
 test_js:
-	$(MAKE) -C test IDRIS=../dist/build/idris test_js
+	$(MAKE) -C test IDRIS=$(IDRIS)
 
 test_all:
 	$(MAKE) test
@@ -33,7 +35,7 @@ test_all:
 	$(MAKE) test_java
 
 lib_clean:
-	$(MAKE) -C libs IDRIS=../../dist/build/idris/idris RTS=../../dist/build/rts/libidris_rts clean
+	$(MAKE) -C libs IDRIS=$(IDRIS) RTS=../../dist/build/rts/libidris_rts clean
 
 relib: lib_clean
 	$(CABAL) install $(CABALFLAGS)
